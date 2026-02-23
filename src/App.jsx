@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, getDocs, addDoc, deleteDoc, updateDoc, doc, serverTimestamp } from "firebase/firestore";
+import { collection, getDocs, addDoc, deleteDoc, updateDoc, doc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { db } from "./firebase";
 
 export default function App() {
@@ -8,10 +8,7 @@ export default function App() {
   const [services, setServices] = useState([]);
   const [appointments, setAppointments] = useState([]);
   
-  // Estados para Edição
   const [editId, setEditId] = useState(null);
-
-  // Estados para formulários
   const [nomeCliente, setNomeCliente] = useState("");
   const [telefone, setTelefone] = useState("");
   const [nomeServico, setNomeServico] = useState("");
@@ -34,7 +31,43 @@ export default function App() {
 
   useEffect(() => { loadData(); }, []);
 
-  // --- FUNÇÕES DE CLIENTES ---
+  // --- NOVA FUNÇÃO: IMPORTAR CSV ---
+  const handleImportCSV = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target.result;
+      const lines = text.split("\n");
+      const batch = writeBatch(db); // Batch permite salvar vários de uma vez (mais rápido)
+
+      // Ignora o cabeçalho e percorre as linhas
+      lines.slice(1).forEach((line) => {
+        const columns = line.split(","); // Ajuste para ";" se seu CSV usar ponto e vírgula
+        if (columns.length >= 2) {
+          const nome = columns[0].trim().replace(/"/g, "");
+          const fone = columns[1].trim().replace(/"/g, "");
+          
+          if (nome) {
+            const newClientRef = doc(collection(db, "clients"));
+            batch.set(newClientRef, {
+              nome: nome,
+              telefone: fone,
+              tenantId: "CRIS",
+              createdAt: serverTimestamp()
+            });
+          }
+        }
+      });
+
+      await batch.commit();
+      alert("Contatos importados com sucesso!");
+      loadData();
+    };
+    reader.readAsText(file);
+  };
+
   const handleClient = async (e) => {
     e.preventDefault();
     const data = { nome: nomeCliente, telefone, updatedAt: serverTimestamp() };
@@ -47,7 +80,6 @@ export default function App() {
     setNomeCliente(""); setTelefone(""); loadData();
   };
 
-  // --- FUNÇÕES DE SERVIÇOS ---
   const handleService = async (e) => {
     e.preventDefault();
     const data = { nome: nomeServico, preco: Number(preco), duracao: Number(duracao), updatedAt: serverTimestamp() };
@@ -60,26 +92,19 @@ export default function App() {
     setNomeServico(""); setPreco(""); setDuracao(""); loadData();
   };
 
-  // --- FUNÇÕES DE AGENDAMENTO ---
   const handleAppointment = async (e) => {
     e.preventDefault();
     const dataC = new Date(dataHora);
-    
-    // Validação: Domingo
     if (dataC.getDay() === 0) return alert("Não atendemos aos domingos!");
-    
-    // Validação: Hora Cheia (Minutos devem ser 00)
-    if (dataC.getMinutes() !== 0) return alert("Por favor, agende apenas horários cheios (ex: 14:00, 15:00).");
-
+    if (dataC.getMinutes() !== 0) return alert("Agende apenas horários cheios (ex: 14:00).");
     const data = { clientId: selCliente, serviceId: selServico, dataHora, status: "confirmado" };
     await addDoc(collection(db, "appointments"), { ...data, tenantId: "CRIS", createdAt: serverTimestamp() });
     setSelCliente(""); setSelServico(""); setDataHora(""); loadData();
-    alert("Agendado com sucesso!");
+    alert("Agendado!");
   };
 
-  // --- FUNÇÕES DE EXCLUSÃO ---
   const deleteItem = async (col, id) => {
-    if (window.confirm("Tem certeza que deseja excluir/desmarcar?")) {
+    if (window.confirm("Confirmar exclusão?")) {
       await deleteDoc(doc(db, col, id));
       loadData();
     }
@@ -92,9 +117,9 @@ export default function App() {
       <h1 style={{ color: '#d81b60', textAlign: 'center' }}>Pragendar R$</h1>
       
       <div style={{ display: 'flex', gap: '5px', marginBottom: '20px', overflowX: 'auto' }}>
-        <button onClick={() => {setTab("agenda"); setEditId(null)}} style={btnTab(tab === "agenda")}>Agenda</button>
-        <button onClick={() => {setTab("clientes"); setEditId(null)}} style={btnTab(tab === "clientes")}>Clientes</button>
-        <button onClick={() => {setTab("servicos"); setEditId(null)}} style={btnTab(tab === "servicos")}>Serviços</button>
+        <button onClick={() => setTab("agenda")} style={btnTab(tab === "agenda")}>Agenda</button>
+        <button onClick={() => setTab("clientes")} style={btnTab(tab === "clientes")}>Clientes</button>
+        <button onClick={() => setTab("servicos")} style={btnTab(tab === "servicos")}>Serviços</button>
       </div>
 
       {tab === "agenda" && (
@@ -110,11 +135,10 @@ export default function App() {
                 <option value="">Selecione o Serviço</option>
                 {services.map(s => <option key={s.id} value={s.id}>{s.nome} (R${s.preco})</option>)}
               </select>
-              <input type="datetime-local" step="3600" value={dataHora} onChange={e => setDataHora(e.target.value)} style={inputStyle} />
-              <button type="submit" style={btnStyle}>Confirmar Agendamento</button>
+              <input type="datetime-local" value={dataHora} onChange={e => setDataHora(e.target.value)} style={inputStyle} />
+              <button type="submit" style={btnStyle}>Confirmar</button>
             </form>
           </section>
-          <h3>Próximos Atendimentos</h3>
           {appointments.sort((a,b) => a.dataHora.localeCompare(b.dataHora)).map(app => (
             <div key={app.id} style={itemStyle}>
               <div>
@@ -134,12 +158,19 @@ export default function App() {
             <form onSubmit={handleClient}>
               <input placeholder="Nome" value={nomeCliente} onChange={e => setNomeCliente(e.target.value)} style={inputStyle} />
               <input placeholder="Telefone" value={telefone} onChange={e => setTelefone(e.target.value)} style={inputStyle} />
-              <button type="submit" style={btnStyle}>{editId ? "Salvar Alteração" : "Cadastrar Cliente"}</button>
+              <button type="submit" style={btnStyle}>{editId ? "Salvar" : "Cadastrar"}</button>
             </form>
+            
+            {!editId && (
+              <div style={{marginTop: '15px', borderTop: '1px dashed #ccc', paddingTop: '10px'}}>
+                <label style={{fontSize: '12px', display: 'block', marginBottom: '5px'}}>Importar contatos (CSV):</label>
+                <input type="file" accept=".csv" onChange={handleImportCSV} style={{fontSize: '12px'}} />
+              </div>
+            )}
           </section>
           {clients.map(c => (
             <div key={c.id} style={itemStyle}>
-              <span>{c.nome}</span>
+              <span>{c.nome} - {c.telefone}</span>
               <div>
                 <button onClick={() => {setEditId(c.id); setNomeCliente(c.nome); setTelefone(c.telefone)}} style={btnEdit}>✏️</button>
                 <button onClick={() => deleteItem("clients", c.id)} style={btnDel}>🗑️</button>
@@ -149,6 +180,7 @@ export default function App() {
         </div>
       )}
 
+      {/* Aba de Serviços mantida igual */}
       {tab === "servicos" && (
         <div>
           <section style={cardStyle}>
@@ -157,7 +189,7 @@ export default function App() {
               <input placeholder="Nome" value={nomeServico} onChange={e => setNomeServico(e.target.value)} style={inputStyle} />
               <input placeholder="Preço (R$)" type="number" value={preco} onChange={e => setPreco(e.target.value)} style={inputStyle} />
               <input placeholder="Duração (min)" type="number" value={duracao} onChange={e => setDuracao(e.target.value)} style={inputStyle} />
-              <button type="submit" style={btnStyle}>{editId ? "Salvar Alteração" : "Cadastrar Serviço"}</button>
+              <button type="submit" style={btnStyle}>Salvar</button>
             </form>
           </section>
           {services.map(s => (
@@ -175,11 +207,10 @@ export default function App() {
   );
 }
 
-// Estilos
-const btnTab = (active) => ({ flex: 1, padding: '10px', backgroundColor: active ? '#d81b60' : '#eee', color: active ? 'white' : 'black', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: active ? 'bold' : 'normal' });
+const btnTab = (active) => ({ flex: 1, padding: '10px', backgroundColor: active ? '#d81b60' : '#eee', color: active ? 'white' : 'black', border: 'none', borderRadius: '5px', cursor: 'pointer' });
 const cardStyle = { backgroundColor: '#fff0f5', padding: '15px', borderRadius: '10px', marginBottom: '20px', border: '1px solid #f8bbd0' };
 const inputStyle = { width: '100%', padding: '10px', marginBottom: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' };
-const btnStyle = { width: '100%', padding: '12px', backgroundColor: '#d81b60', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' };
+const btnStyle = { width: '100%', padding: '12px', backgroundColor: '#d81b60', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' };
 const itemStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', borderBottom: '1px solid #eee' };
-const btnDel = { backgroundColor: '#ffcdd2', color: '#c62828', border: 'none', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer', marginLeft: '5px' };
+const btnDel = { backgroundColor: '#ffcdd2', color: '#c62828', border: 'none', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer' };
 const btnEdit = { backgroundColor: '#e1f5fe', color: '#0277bd', border: 'none', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer' };
