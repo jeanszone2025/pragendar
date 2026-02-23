@@ -3,38 +3,42 @@ import { collection, getDocs, addDoc, serverTimestamp } from "firebase/firestore
 import { db } from "./firebase";
 
 export default function App() {
-  const [tab, setTab] = useState("agenda"); // Começar logo na agenda
+  const [tab, setTab] = useState("agenda");
   const [clients, setClients] = useState([]);
   const [services, setServices] = useState([]);
   const [appointments, setAppointments] = useState([]);
   
-  // Estados para os formulários
+  // Estados para formulários
   const [nomeCliente, setNomeCliente] = useState("");
   const [telefone, setTelefone] = useState("");
   const [nomeServico, setNomeServico] = useState("");
   const [preco, setPreco] = useState("");
   const [duracao, setDuracao] = useState("");
 
-  // Estados para o Agendamento
   const [selCliente, setSelCliente] = useState("");
   const [selServico, setSelServico] = useState("");
   const [dataHora, setDataHora] = useState("");
 
   async function loadData() {
-    const queryClients = await getDocs(collection(db, "clients"));
-    setClients(queryClients.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    try {
+      const queryClients = await getDocs(collection(db, "clients"));
+      setClients(queryClients.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-    const queryServices = await getDocs(collection(db, "services"));
-    setServices(queryServices.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const queryServices = await getDocs(collection(db, "services"));
+      setServices(queryServices.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-    const queryApps = await getDocs(collection(db, "appointments"));
-    setAppointments(queryApps.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const queryApps = await getDocs(collection(db, "appointments"));
+      setAppointments(queryApps.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    } catch (error) {
+      console.error("Erro ao carregar dados:", error);
+    }
   }
 
   useEffect(() => { loadData(); }, []);
 
   const handleAddClient = async (e) => {
     e.preventDefault();
+    if(!nomeCliente) return alert("Nome é obrigatório");
     await addDoc(collection(db, "clients"), { nome: nomeCliente, telefone, tenantId: "ID_DA_CRIS", createdAt: serverTimestamp() });
     setNomeCliente(""); setTelefone(""); loadData();
   };
@@ -45,26 +49,41 @@ export default function App() {
     setNomeServico(""); setPreco(""); setDuracao(""); loadData();
   };
 
-  // Função para Salvar Agendamento
   const handleAddAppointment = async (e) => {
     e.preventDefault();
     if (!selCliente || !selServico || !dataHora) return alert("Preencha todos os campos!");
 
-    await addDoc(collection(db, "appointments"), {
-      clientId: selCliente,
-      serviceId: selServico,
-      dataHora: dataHora,
-      status: "confirmado",
-      tenantId: "ID_DA_CRIS",
-      createdAt: serverTimestamp()
-    });
-
-    setSelCliente(""); setSelServico(""); setDataHora(""); loadData();
-    alert("Agendamento realizado!");
+    try {
+      await addDoc(collection(db, "appointments"), {
+        clientId: selCliente,
+        serviceId: selServico,
+        dataHora: dataHora,
+        status: "confirmado",
+        tenantId: "ID_DA_CRIS",
+        createdAt: serverTimestamp()
+      });
+      setSelCliente(""); setSelServico(""); setDataHora(""); 
+      await loadData();
+      alert("Agendamento realizado!");
+    } catch (err) {
+      alert("Erro ao agendar. Tente novamente.");
+    }
   };
 
-  // Função para encontrar nome do cliente/serviço na lista
-  const getNome = (lista, id) => lista.find(item => item.id === id)?.nome || "Não encontrado";
+  const getNome = (lista, id) => {
+    const item = lista.find(i => i.id === id);
+    return item ? item.nome : "Excluído ou não encontrado";
+  };
+
+  // Função segura para formatar data
+  const formatarData = (stringData) => {
+    try {
+      if(!stringData) return "Data pendente";
+      return new Date(stringData).toLocaleString('pt-BR');
+    } catch (e) {
+      return "Erro na data";
+    }
+  };
 
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '500px', margin: 'auto' }}>
@@ -88,7 +107,7 @@ export default function App() {
               
               <select value={selServico} onChange={e => setSelServico(e.target.value)} style={inputStyle}>
                 <option value="">Selecione o Serviço</option>
-                {services.map(s => <option key={s.id} value={s.id}>{s.nome} ({s.preco}€)</option>)}
+                {services.map(s => <option key={s.id} value={s.id}>{s.nome} (R${s.preco})</option>)}
               </select>
 
               <input type="datetime-local" value={dataHora} onChange={e => setDataHora(e.target.value)} style={inputStyle} />
@@ -97,15 +116,22 @@ export default function App() {
           </section>
 
           <h3>Próximos Atendimentos</h3>
-          {appointments.sort((a,b) => a.dataHora.localeCompare(b.dataHora)).map(app => (
-            <div key={app.id} style={itemStyle}>
-              <strong>{new Date(app.dataHora).toLocaleString('pt-PT')}</strong><br/>
-              {getNome(clients, app.clientId)} - {getNome(services, app.serviceId)}
-            </div>
-          ))}
+          {appointments.length === 0 ? <p>Nenhum agendamento.</p> : 
+            appointments
+              .filter(a => a.dataHora) // Remove agendamentos sem data
+              .sort((a,b) => a.dataHora.localeCompare(b.dataHora))
+              .map(app => (
+                <div key={app.id} style={itemStyle}>
+                  <strong>{formatarData(app.dataHora)}</strong><br/>
+                  {getNome(clients, app.clientId)} <br/>
+                  <small style={{color: '#d81b60'}}>{getNome(services, app.serviceId)}</small>
+                </div>
+            ))
+          }
         </div>
       )}
 
+      {/* Abas de Clientes e Serviços mantidas com proteção simples */}
       {tab === "clientes" && (
         <div>
           <section style={cardStyle}>
@@ -126,12 +152,12 @@ export default function App() {
             <h3>Novo Serviço</h3>
             <form onSubmit={handleAddService}>
               <input placeholder="Nome do Serviço" value={nomeServico} onChange={e => setNomeServico(e.target.value)} style={inputStyle} />
-              <input placeholder="Preço (€)" type="number" value={preco} onChange={e => setPreco(e.target.value)} style={inputStyle} />
+              <input placeholder="Preço" type="number" value={preco} onChange={e => setPreco(e.target.value)} style={inputStyle} />
               <input placeholder="Duração (min)" type="number" value={duracao} onChange={e => setDuracao(e.target.value)} style={inputStyle} />
               <button type="submit" style={btnStyle}>Guardar Serviço</button>
             </form>
           </section>
-          {services.map(s => <div key={s.id} style={itemStyle}><strong>{s.nome}</strong> - {s.preco}€</div>)}
+          {services.map(s => <div key={s.id} style={itemStyle}><strong>{s.nome}</strong> - R${s.preco}</div>)}
         </div>
       )}
     </div>
