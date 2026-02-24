@@ -163,78 +163,71 @@ export default function App() {
   };
 
   // ========== FIX 1: IMPORTAÇÃO CSV COM WRITEBATCH (ULTRARRÁPIDO) ==========
-  const handleCSVImport = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !user) return;
+  // === IMPORTAÇÃO DE CLIENTES ROBUSTA (Aceita Emojis e Caracteres Especiais) ===
+const handleCSVImport = async (e) => {
+  const file = e.target.files[0];
+  if (!file || !user) return;
 
-    setImportingCSV(true);
+  setImportingCSV(true);
+  const batch = writeBatch(db); // Prepara o envio em massa
+  const reader = new FileReader();
+
+  reader.onload = async (event) => {
     try {
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        let csv = event.target.result;
-        
-        // Remove BOM
-        if (csv.charCodeAt(0) === 0xFEFF) {
-          csv = csv.slice(1);
+      let content = event.target.result;
+
+      // 1. Remove o BOM (Byte Order Mark) que o Excel insere em arquivos UTF-8
+      if (content.charCodeAt(0) === 0xFEFF) {
+        content = content.slice(1);
+      }
+
+      // 2. Normaliza quebras de linha (Windows \r\n vs Mac/Linux \n)
+      const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+      
+      let count = 0;
+      // Começamos em i = 1 para pular o cabeçalho (Nome, Telefone)
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue; 
+
+        // 3. Split inteligente: divide por vírgula e limpa espaços
+        const [nome, telefone] = line.split(',').map(item => item?.trim());
+
+        if (nome) {
+          const newRef = doc(collection(db, "clients"));
+          batch.set(newRef, {
+            nome: nome, // Suporta emojis, acentos e símbolos
+            telefone: telefone || "", 
+            tenantId: user.uid,
+            createdAt: serverTimestamp() 
+          });
+          count++;
         }
 
-        // Normaliza quebras de linha
-        csv = csv.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-        
-        const linhas = csv.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-        
-        // FIX 1: Usa writeBatch para inserção ultra-rápida
-        const batch = writeBatch(db);
-        let importados = 0;
-        let erros = [];
+        // Limite de segurança do Firebase Batch é 500 operações
+        if (count >= 500) break; 
+      }
 
-        for (let i = 1; i < linhas.length; i++) {
-          try {
-            const partes = linhas[i].split(',');
-            const nome = partes[0]?.trim();
-            const telefone = partes[1]?.trim();
-
-            if (nome && nome.length > 0 && telefone && telefone.length > 0) {
-              const newClientRef = doc(collection(db, "clients"));
-              batch.set(newClientRef, {
-                nome,
-                telefone,
-                tenantId: user.uid
-              });
-              importados++;
-
-              // Commit a cada 100 documentos para evitar limite
-              if (importados % 100 === 0) {
-                await batch.commit();
-              }
-            } else if (nome || telefone) {
-              erros.push(`Linha ${i + 1}: Dados incompletos`);
-            }
-          } catch (err) {
-            erros.push(`Linha ${i + 1}: ${err.message}`);
-          }
-        }
-
-        // Envia o restante
-        if (importados % 100 !== 0) {
-          await batch.commit();
-        }
-
-        loadData(user.uid);
-        let msg = `✅ ${importados} clientes importados ultrarrápido!`;
-        if (erros.length > 0) {
-          msg += `\n⚠️ ${erros.length} linhas puladas`;
-        }
-        alert(msg);
-      };
-      reader.readAsText(file, 'UTF-8');
+      if (count > 0) {
+        await batch.commit();
+        alert(`✅ Sucesso! ${count} contatos importados com emojis e acentos.`);
+      } else {
+        alert("⚠️ Nenhuma linha válida encontrada. O CSV deve ter: Nome, Telefone");
+      }
+      
+      loadData(user.uid);
     } catch (error) {
-      alert("❌ Erro ao importar CSV: " + error.message);
+      console.error("Erro no processamento:", error);
+      alert("❌ Falha crítica ao ler o arquivo CSV.");
     } finally {
       setImportingCSV(false);
+      e.target.value = ""; // Limpa o input para permitir re-importação
     }
   };
 
+  // 5. O SEGREDO: Força a leitura em UTF-8 para preservar a integridade dos dados
+  reader.readAsText(file, 'UTF-8');
+};
   const handleSaveProfile = async () => {
     try {
       if (!user) return;
