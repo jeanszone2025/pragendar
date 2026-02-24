@@ -55,12 +55,14 @@ export default function App() {
   const [editingProfile, setEditingProfile] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
+  // --- ESTADOS CSV ---
+  const [importingCSV, setImportingCSV] = useState(false);
+
   // ========== MONITORAMENTO DE AUTENTICAÇÃO ==========
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (loggedUser) => {
       setUser(loggedUser);
       if (loggedUser) {
-        // ========== CORREÇÃO 1: Passar UID diretamente ==========
         loadData(loggedUser.uid);
         loadProfile(loggedUser.uid);
       }
@@ -146,6 +148,42 @@ export default function App() {
     }
   };
 
+  // ========== RESTAURADO: Importação de CSV de Clientes ==========
+  const handleCSVImport = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !user) return;
+
+    setImportingCSV(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const csv = event.target.result;
+        const linhas = csv.split('\n').filter(l => l.trim());
+        let importados = 0;
+
+        for (let i = 1; i < linhas.length; i++) {
+          const [nome, telefone] = linhas[i].split(',').map(s => s.trim());
+          if (nome && telefone) {
+            await addDoc(collection(db, "clients"), {
+              nome,
+              telefone,
+              tenantId: user.uid
+            });
+            importados++;
+          }
+        }
+
+        loadData(user.uid);
+        alert(`✅ ${importados} clientes importados com sucesso!`);
+      };
+      reader.readAsText(file);
+    } catch (error) {
+      alert("❌ Erro ao importar CSV: " + error.message);
+    } finally {
+      setImportingCSV(false);
+    }
+  };
+
   const handleSaveProfile = async () => {
     try {
       if (!user) return;
@@ -186,7 +224,7 @@ export default function App() {
   // ========== CORREÇÃO 4: Modal de Pagamento com Seleção de Forma ==========
   const handlePaymentClick = (app) => {
     setSelectedAppForPayment(app);
-    setFormaPagamento("pix"); // Define Pix como padrão
+    setFormaPagamento("pix");
     setShowPaymentModal(true);
   };
 
@@ -214,6 +252,28 @@ export default function App() {
     } catch (error) {
       alert("❌ Erro ao confirmar pagamento: " + error.message);
     }
+  };
+
+  // ========== NOVO: Função de Lembrete WhatsApp ==========
+  const sendWhatsAppReminder = (app) => {
+    const cli = clients.find(c => c.id === app.clientId);
+    const serv = services.find(s => s.id === app.serviceId);
+    
+    if (!cli || !cli.telefone) {
+      return alert("❌ Esta cliente não possui telefone cadastrado!");
+    }
+
+    const dataFmt = new Date(app.dataHora).toLocaleDateString('pt-BR');
+    const horaFmt = String(new Date(app.dataHora).getHours()).padStart(2, '0');
+    const minFmt = String(new Date(app.dataHora).getMinutes()).padStart(2, '0');
+    const nomeS = nomeEmpresa || "Pragendar R$";
+
+    const mensagem = `Olá ${cli.nome}! ✨ Aqui é do ${nomeS}. Passando para confirmar seu horário de *${serv?.nome || 'procedimento'}* no dia *${dataFmt}* às *${horaFmt}:${minFmt}h*. Podemos confirmar? 🙏`;
+
+    const foneLimpo = cli.telefone.replace(/\D/g, '');
+    const link = `https://wa.me/55${foneLimpo}?text=${encodeURIComponent(mensagem)}`;
+    
+    window.open(link, '_blank');
   };
 
   const handleSaveTransaction = async () => {
@@ -335,27 +395,48 @@ export default function App() {
           </div>
 
           <h3 style={{borderBottom: '2px solid #d81b60'}}>Dia {selectedDate.toLocaleDateString('pt-BR')}</h3>
-          {Array.from({ length: 13 }, (_, i) => i + 8).map(hora => {
-            const app = getAppDoHorario(hora);
-            const isStart = app && new Date(app.dataHora).getHours() === hora;
-            const isDomingo = selectedDate.getDay() === 0;
-            return (
-              <div key={hora} style={{ ...itemStyle, borderLeft: app?.status === 'pago' ? '5px solid #4caf50' : (app ? '5px solid #ff9800' : '1px solid #eee') }}>
-                <div style={{ width: '50px', fontWeight: 'bold' }}>{hora}:00</div>
-                <div style={{ flex: 1 }}>
-                  {isDomingo ? <span style={{color:'#999'}}>Fechado</span> : app ? (
-                    <div onClick={() => {setSelHora(hora); setEditAppId(app.id); setSelCliente(app.clientId); setSelServico(app.serviceId); setClientSearch(getNome(clients, app.clientId)); setShowModal(true);}} style={{cursor:'pointer', opacity: isStart ? 1 : 0.6}}>
-                      <strong>{getNome(clients, app.clientId)}</strong> {isStart && `- ${getNome(services, app.serviceId)}`}
+          
+          {/* ========== CORREÇÃO: Horários dinâmicos baseados no perfil ========== */}
+          {(() => {
+            const horaInicio = parseInt(horarioAbertura.split(':')[0]) || 8;
+            const horaFim = parseInt(horarioFechamento.split(':')[0]) || 19;
+            const totalHoras = horaFim - horaInicio + 1;
+
+            return Array.from({ length: totalHoras }, (_, i) => i + horaInicio).map(hora => {
+              const app = getAppDoHorario(hora);
+              const isStart = app && new Date(app.dataHora).getHours() === hora;
+              const isDomingo = selectedDate.getDay() === 0;
+              return (
+                <div key={hora} style={{ ...itemStyle, borderLeft: app?.status === 'pago' ? '5px solid #4caf50' : (app ? '5px solid #ff9800' : '1px solid #eee') }}>
+                  <div style={{ width: '50px', fontWeight: 'bold' }}>{String(hora).padStart(2, '0')}:00</div>
+                  <div style={{ flex: 1 }}>
+                    {isDomingo ? <span style={{color:'#999'}}>Fechado</span> : app ? (
+                      <div onClick={() => {setSelHora(hora); setEditAppId(app.id); setSelCliente(app.clientId); setSelServico(app.serviceId); setClientSearch(getNome(clients, app.clientId)); setShowModal(true);}} style={{cursor:'pointer', opacity: isStart ? 1 : 0.6}}>
+                        <strong>{getNome(clients, app.clientId)}</strong> {isStart && `- ${getNome(services, app.serviceId)}`}
+                      </div>
+                    ) : (
+                      <span onClick={() => {setSelHora(hora); setEditAppId(null); setSelCliente(""); setClientSearch(""); setShowModal(true);}} style={{color: '#4caf50', cursor:'pointer'}}>+ Disponível</span>
+                    )}
+                  </div>
+                  {isStart && app.status !== "pago" && (
+                    <div style={{ display: 'flex', gap: '3px' }}>
+                      {/* ========== NOVO: Botão WhatsApp ========== */}
+                      <button 
+                        onClick={() => sendWhatsAppReminder(app)} 
+                        style={{ ...btnWhatsApp }}
+                        title="Enviar Lembrete via WhatsApp"
+                      >
+                        📱
+                      </button>
+                      {/* Botão de Pagar */}
+                      <button onClick={() => handlePaymentClick(app)} style={btnPay}>💵</button>
                     </div>
-                  ) : (
-                    <span onClick={() => {setSelHora(hora); setEditAppId(null); setSelCliente(""); setClientSearch(""); setShowModal(true);}} style={{color: '#4caf50', cursor:'pointer'}}>+ Disponível</span>
                   )}
+                  {isStart && <button onClick={() => deleteWithConfirm("appointments", app.id, getNome(clients, app.clientId))} style={btnDel}>X</button>}
                 </div>
-                {isStart && app.status !== "pago" && <button onClick={() => handlePaymentClick(app)} style={btnPay}>💵</button>}
-                {isStart && <button onClick={() => deleteWithConfirm("appointments", app.id, getNome(clients, app.clientId))} style={btnDel}>X</button>}
-              </div>
-            );
-          })}
+              );
+            });
+          })()}
         </div>
       )}
 
@@ -405,7 +486,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ABA CLIENTES (BUSCA A-Z) */}
+      {/* ABA CLIENTES (BUSCA A-Z + CSV) */}
       {tab === "clientes" && (
         <div>
           <section style={cardStyle}>
@@ -424,6 +505,26 @@ export default function App() {
               }
             }} style={btnStyle}>Salvar Cliente</button>
           </section>
+
+          {/* ========== RESTAURADO: Importação de CSV ========== */}
+          <section style={cardStyle}>
+            <h3>📥 Importar Clientes via CSV</h3>
+            <p style={{fontSize:'12px', color:'#666', marginBottom:'10px'}}>
+              Formato: Nome,Telefone (cabeçalho obrigatório)
+            </p>
+            <input 
+              type="file" 
+              accept=".csv"
+              onChange={handleCSVImport}
+              disabled={importingCSV}
+              style={inputStyle}
+            />
+            {importingCSV && <p style={{fontSize:'12px', color:'#2196f3'}}>⏳ Importando...</p>}
+            <p style={{fontSize:'11px', color:'#999', marginTop:'10px'}}>
+              💡 Exemplo: Crie um arquivo com 2 colunas (Nome, Telefone) e salve como .csv
+            </p>
+          </section>
+
           <input placeholder="🔍 Buscar cliente pelo nome..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={inputStyle} />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', marginBottom: '10px' }}>
             {alfabeto.map(l => <button key={l} onClick={() => setSelectedLetter(l)} style={btnLetter(selectedLetter === l)}>{l}</button>)}
@@ -469,7 +570,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ABA PERFIL (NOVO) */}
+      {/* ABA PERFIL */}
       {tab === "perfil" && (
         <div>
           <section style={cardStyle}>
@@ -545,11 +646,11 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE AGENDAMENTO (COM BUSCADOR E EDIÇÃO) */}
+      {/* MODAL DE AGENDAMENTO */}
       {showModal && (
         <div style={modalOverlay}>
           <div style={modalContent}>
-            <h3>{editAppId ? "Editar" : "Novo"} Agendamento {selHora}:00</h3>
+            <h3>{editAppId ? "Editar" : "Novo"} Agendamento {String(selHora).padStart(2, '0')}:00</h3>
             <div style={{position:'relative'}}>
               <input placeholder="🔍 Nome da cliente..." value={clientSearch} onChange={e => {setClientSearch(e.target.value); setSelCliente("");}} style={inputStyle} />
               {clientSearch && !selCliente && (
@@ -583,7 +684,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ========== MODAL DE PAGAMENTO COM SELEÇÃO DE FORMA ========== */}
+      {/* MODAL DE PAGAMENTO */}
       {showPaymentModal && selectedAppForPayment && (
         <div style={modalOverlay}>
           <div style={modalContent}>
@@ -635,6 +736,7 @@ const modalContent = { backgroundColor: '#fff', padding: '20px', borderRadius: '
 const dropdownStyle = { position: 'absolute', top: '45px', left: 0, width: '100%', backgroundColor: '#fff', border: '1px solid #ccc', zIndex: 10, maxHeight: '100px', overflowY: 'auto' };
 const dropdownItem = { padding: '8px', cursor: 'pointer', borderBottom: '1px solid #eee' };
 const btnPay = { backgroundColor: '#4caf50', color: '#fff', border: 'none', borderRadius: '5px', padding: '5px 10px', marginLeft: '5px', cursor: 'pointer', fontSize: '14px' };
+const btnWhatsApp = { backgroundColor: '#25D366', color: '#fff', border: 'none', borderRadius: '5px', padding: '5px 10px', marginLeft: '5px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' };
 const btnDel = { backgroundColor: '#ffcdd2', color: '#c62828', border: 'none', borderRadius: '5px', padding: '5px 10px', marginLeft: '5px', cursor: 'pointer' };
 const btnEdit = { backgroundColor: '#e1f5fe', color: '#0277bd', border: 'none', borderRadius: '5px', padding: '5px 10px', cursor: 'pointer' };
 const btnLetter = (active) => ({ padding: '3px', minWidth: '22px', fontSize: '10px', backgroundColor: active ? '#d81b60' : '#f0f0f0', color: active ? 'white' : '#333', border: '1px solid #ddd', borderRadius: '3px', cursor: 'pointer' });
