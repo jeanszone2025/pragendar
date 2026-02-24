@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, getDocs, addDoc, deleteDoc, updateDoc, doc, serverTimestamp, writeBatch, query, where } from "firebase/firestore";
+import { collection, getDocs, addDoc, deleteDoc, updateDoc, doc, query, where, setDoc, getDoc } from "firebase/firestore";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import { db, auth } from "./firebase";
 
@@ -41,6 +41,7 @@ export default function App() {
   const [descFin, setDescFin] = useState("");
   const [valorFin, setValorFin] = useState("");
   const [tipoFin, setTipoFin] = useState("receita");
+  const [formaPagamento, setFormaPagamento] = useState("dinheiro");
 
   // --- ESTADOS DO PERFIL ---
   const [nomeEmpresa, setNomeEmpresa] = useState("");
@@ -80,52 +81,63 @@ export default function App() {
 
   async function loadData() {
     try {
-      const qC = await getDocs(collection(db, "clients"));
+      if (!user) return;
+
+      // ========== CORREÇÃO: Filtrar por tenantId em TODOS os dados ==========
+      const qC = await getDocs(query(collection(db, "clients"), where("tenantId", "==", user.uid)));
       setClients(qC.docs.map(d => ({ id: d.id, ...d.data() })));
-      const qS = await getDocs(collection(db, "services"));
+
+      const qS = await getDocs(query(collection(db, "services"), where("tenantId", "==", user.uid)));
       setServices(qS.docs.map(d => ({ id: d.id, ...d.data() })));
-      const qA = await getDocs(collection(db, "appointments"));
+
+      const qA = await getDocs(query(collection(db, "appointments"), where("tenantId", "==", user.uid)));
       setAppointments(qA.docs.map(d => ({ id: d.id, ...d.data() })));
-      const qT = await getDocs(collection(db, "transactions"));
+
+      const qT = await getDocs(query(collection(db, "transactions"), where("tenantId", "==", user.uid)));
       setTransactions(qT.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch (error) { console.error("Erro ao carregar dados:", error); }
+    } catch (error) { 
+      console.error("Erro ao carregar dados:", error); 
+    }
   }
 
-  // ========== FUNÇÕES DO PERFIL ==========
+  // ========== FUNÇÕES DO PERFIL COM CORREÇÕES ==========
   async function loadProfile() {
     try {
       if (!user) return;
-      const qP = await getDocs(query(collection(db, "profiles"), where("userId", "==", user.uid)));
-      if (!qP.empty) {
-        const profileData = qP.docs[0].data();
-        setProfile({ id: qP.docs[0].id, ...profileData });
-        setNomeEmpresa(profileData.nomeEmpresa || "");
-        setLogoUrl(profileData.logoUrl || "");
-        setTelefoneProfissional(profileData.telefoneProfissional || "");
-        setHorarioAbertura(profileData.horarioAbertura || "09:00");
-        setHorarioFechamento(profileData.horarioFechamento || "19:00");
+
+      // ========== CORREÇÃO: Usar getDoc direto com UID como ID do documento ==========
+      const docRef = doc(db, "profiles", user.uid);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setProfile({ id: user.uid, ...data });
+        setNomeEmpresa(data.nomeEmpresa || "");
+        setLogoUrl(data.logoUrl || "");
+        setTelefoneProfissional(data.telefoneProfissional || "");
+        setHorarioAbertura(data.horarioAbertura || "09:00");
+        setHorarioFechamento(data.horarioFechamento || "19:00");
       }
-    } catch (error) { console.error("Erro ao carregar perfil:", error); }
+    } catch (error) { 
+      console.error("Erro ao carregar perfil:", error); 
+    }
   }
 
+  // ========== CORREÇÃO: Usar setDoc em vez de addDoc ==========
   const handleSaveProfile = async () => {
     try {
       if (!user) return;
-      const profileData = {
-        userId: user.uid,
+
+      const docRef = doc(db, "profiles", user.uid);
+      await setDoc(docRef, {
         nomeEmpresa,
         logoUrl,
         telefoneProfissional,
         horarioAbertura,
         horarioFechamento,
         updatedAt: new Date().toISOString()
-      };
+      }, { merge: true });
 
-      if (profile) {
-        await updateDoc(doc(db, "profiles", profile.id), profileData);
-      } else {
-        await addDoc(collection(db, "profiles"), profileData);
-      }
       setEditingProfile(false);
       loadProfile();
       alert("Perfil salvo com sucesso!");
@@ -153,23 +165,39 @@ export default function App() {
   const handleConfirmPayment = async (app) => {
     const serv = services.find(s => s.id === app.serviceId);
     const cli = clients.find(c => c.id === app.clientId);
+    
+    // ========== CORREÇÃO: Adicionar formaPagamento ==========
     await addDoc(collection(db, "transactions"), {
       descricao: `Atendimento: ${cli?.nome} (${serv?.nome})`,
       valor: Number(serv?.preco || 0),
       tipo: "receita",
       data: new Date().toISOString(),
       tenantId: user.uid,
-      appointmentId: app.id
+      appointmentId: app.id,
+      formaPagamento: formaPagamento
     });
     await updateDoc(doc(db, "appointments", app.id), { status: "pago" });
-    loadData(); alert("Pagamento recebido!");
+    loadData(); 
+    alert("Pagamento recebido!");
   };
 
+  // ========== CORREÇÃO: Adicionar formaPagamento ao lançamento ==========
   const handleSaveTransaction = async () => {
-    const d = { descricao: descFin, valor: Number(valorFin), tipo: tipoFin, data: new Date().toISOString(), tenantId: user.uid };
+    const d = { 
+      descricao: descFin, 
+      valor: Number(valorFin), 
+      tipo: tipoFin, 
+      data: new Date().toISOString(), 
+      tenantId: user.uid,
+      formaPagamento: formaPagamento
+    };
     if (editId) await updateDoc(doc(db, "transactions", editId), d);
     else await addDoc(collection(db, "transactions"), d);
-    setEditId(null); setDescFin(""); setValorFin(""); loadData();
+    setEditId(null); 
+    setDescFin(""); 
+    setValorFin(""); 
+    setFormaPagamento("dinheiro");
+    loadData();
   };
 
   // --- AUXILIARES ---
@@ -304,14 +332,32 @@ export default function App() {
             </select>
             <input placeholder="Descrição" value={descFin} onChange={e => setDescFin(e.target.value)} style={inputStyle} />
             <input placeholder="Valor R$" type="number" value={valorFin} onChange={e => setValorFin(e.target.value)} style={inputStyle} />
+            
+            {/* ========== CORREÇÃO: Seletor de Forma de Pagamento ========== */}
+            <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Forma de Pagamento</label>
+            <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} style={inputStyle}>
+              <option value="dinheiro">💵 Dinheiro</option>
+              <option value="cartao">💳 Cartão</option>
+              <option value="pix">📲 Pix</option>
+            </select>
+
             <button onClick={handleSaveTransaction} style={{...btnStyle, backgroundColor: tipoFin==='receita'?'#4caf50':'#f44336'}}>{editId ? "Salvar Alteração" : "Gravar"}</button>
           </section>
           <h3>Extrato Detalhado</h3>
           {transactions.sort((a,b) => b.data.localeCompare(a.data)).map(t => (
             <div key={t.id} style={itemStyle}>
-              <span style={{flex:1}}><small>{new Date(t.data).toLocaleDateString('pt-BR')}</small><br/>{t.descricao}</span>
+              <span style={{flex:1}}>
+                <small>{new Date(t.data).toLocaleDateString('pt-BR')}</small><br/>
+                {t.descricao}
+                <br/>
+                <small style={{color:'#999'}}>
+                  {t.formaPagamento === 'dinheiro' && '💵 Dinheiro'}
+                  {t.formaPagamento === 'cartao' && '💳 Cartão'}
+                  {t.formaPagamento === 'pix' && '📲 Pix'}
+                </small>
+              </span>
               <strong style={{color: t.tipo==='receita'?'green':'red', marginRight:'10px'}}>{t.tipo==='receita'?'+':'-'} R${t.valor}</strong>
-              <button onClick={() => {setEditId(t.id); setDescFin(t.descricao); setValorFin(t.valor); setTipoFin(t.tipo)}} style={btnEdit}>✏️</button>
+              <button onClick={() => {setEditId(t.id); setDescFin(t.descricao); setValorFin(t.valor); setTipoFin(t.tipo); setFormaPagamento(t.formaPagamento || 'dinheiro')}} style={btnEdit}>✏️</button>
               <button onClick={() => deleteWithConfirm("transactions", t.id, t.descricao)} style={btnDel}>🗑️</button>
             </div>
           ))}
@@ -390,7 +436,7 @@ export default function App() {
                   <p style={{ margin: '5px 0' }}><strong>{nomeEmpresa || "Seu Salão"}</strong></p>
                   <p style={{ margin: '5px 0', fontSize: '12px', color: '#666' }}>{telefoneProfissional || "Telefone não definido"}</p>
                   <p style={{ margin: '5px 0', fontSize: '12px', color: '#666' }}>
-                    {horarioAbertura} às {horarioFechamento}
+                    🕐 {horarioAbertura} às {horarioFechamento}
                   </p>
                 </div>
                 <button onClick={() => setEditingProfile(true)} style={{...btnStyle, backgroundColor: '#2196f3'}}>Editar Perfil</button>
@@ -404,11 +450,17 @@ export default function App() {
                   style={inputStyle} 
                 />
                 <input 
-                  placeholder="URL da Logo" 
+                  placeholder="URL da Logo (ex: https://...)" 
                   value={logoUrl} 
                   onChange={e => setLogoUrl(e.target.value)} 
                   style={inputStyle} 
                 />
+                {logoUrl && (
+                  <div style={{ textAlign: 'center', marginBottom: '10px' }}>
+                    <img src={logoUrl} alt="Preview" style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover' }} />
+                    <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0 0' }}>Preview da Logo</p>
+                  </div>
+                )}
                 <input 
                   placeholder="Telefone de Contato" 
                   value={telefoneProfissional} 
@@ -476,6 +528,7 @@ export default function App() {
 
 // --- AUXILIARES E ESTILOS ---
 const nomeMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
 const calcTotal = (list, p) => {
   const h = new Date().toLocaleDateString('pt-BR');
   const m = new Date().getMonth();
