@@ -1014,13 +1014,50 @@ const calcTotal = (list, p) => {
   }).reduce((acc, c) => acc + c.valor, 0);
 };
 
-const btnTab = (active) => ({ flex: 1, padding: '10px', backgroundColor: active ? '#d81b60' : '#eee', color: active ? 'white' : 'black', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '11px', fontWeight: active ? 'bold' : 'normal' });
-const btnMini = { padding: '5px 15px', backgroundColor: '#eee', border: 'none', borderRadius: '5px', cursor: 'pointer' };
-const inputStyle = { width: '100%', padding: '10px', marginBottom: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' };
-const labelStyle = { fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' };
-const btnStyle = { width: '100%', padding: '12px', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', backgroundColor: '#d81b60' };
-const itemStyle = { display: 'flex', alignItems: 'center', padding: '10px', borderBottom: '1px solid #eee', fontSize: '13px', backgroundColor: '#fff' };
-const cardStyle = { padding: '15px', borderRadius: '10px', marginBottom: '15px', border: '1px solid #eee', backgroundColor: '#fff' };
-const modalOverlay = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 };
-const modalContent = { backgroundColor: '#fff', padding: '20px', borderRadius: '15px', width: '90%', maxWidth: '350px' };
-const dropdownStyle = { position: 'absolute', top: '45px', left: 0, width: '100%', backgroundColor: '#fff', border: '1px solid #ccc', zIndex: 10, maxHeight: '80px', overfl };
+const loginContainer = { padding: '50px 20px', textAlign: 'center', backgroundColor: '#fafafa', minHeight: '100vh' };
+const appWrapper = { padding: '15px', fontFamily: 'sans-serif', maxWidth: '500px', margin: 'auto', backgroundColor: '#fff' };
+const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '1px solid #eee', paddingBottom: '10px' };
+const navStyle = { display: 'flex', gap: '5px', marginBottom: '15px', overflowX: 'auto', paddingBottom: '5px' };
+const input = { width: '100%', padding: '10px', marginBottom: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' };
+const card = { padding: '15px', borderRadius: '12px', border: '1px solid #eee', marginBottom: '15px', backgroundColor: '#fcfcfc' };
+const btnPrincipal = { width: '100%', padding: '12px', backgroundColor: '#d81b60', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' };
+const btnTab = (active) => ({ flex: 1, padding: '8px', backgroundColor: active ? '#d81b60' : '#eee', color: active ? '#fff' : '#333', border: 'none', borderRadius: '5px', fontSize: '11px', cursor: 'pointer' });
+const hourRow = (app) => ({ display: 'flex', alignItems: 'center', padding: '10px', borderBottom: '1px solid #f9f9f9', borderLeft: app?.status === 'pago' ? '5px solid #4caf50' : (app ? '5px solid #ff9800' : '1px solid #eee') });
+const calendarGrid = { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '3px', marginBottom: '15px' };
+const dayCell = (sel) => ({ padding: '10px 0', textAlign: 'center', borderRadius: '5px', backgroundColor: sel ? '#d81b60' : '#fff', color: sel ? '#fff' : '#333', cursor: 'pointer', border: '1px solid #eee', fontSize: '13px' });
+const itemRow = { display: 'flex', alignItems: 'center', padding: '10px', borderBottom: '1px solid #eee', fontSize: '13px' };
+const overlay = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' };
+const modal = { backgroundColor: '#fff', padding: '20px', borderRadius: '15px', width: '90%', maxWidth: '350px' };
+const chartBar = { width: '100%', height: '8px', backgroundColor: '#eee', borderRadius: '4px', margin: '5px 0' };
+const barIn = { height: '100%', borderRadius: '4px', transition: 'width 0.5s' };
+const miniLogo = { width: '35px', height: '35px', borderRadius: '50%', objectFit: 'cover' };
+const largeLogo = { width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', marginBottom: '10px' };
+const badgeFidelidade = { backgroundColor: '#ff9800', color: '#fff', padding: '2px 6px', borderRadius: '50%', marginLeft: '5px', fontSize: '10px' };
+const dropdown = { position: 'absolute', backgroundColor: '#fff', border: '1px solid #ddd', width: '100%', zIndex: 10, maxHeight: '100px', overflowY: 'auto' };
+const dropItem = { padding: '8px', borderBottom: '1px solid #eee', cursor: 'pointer' };
+const btnZap = { backgroundColor: '#25D366', color: '#fff', border: 'none', borderRadius: '5px', padding: '5px 8px', cursor: 'pointer' };
+const btnGreen = { backgroundColor: '#4caf50', color: '#fff', border: 'none', borderRadius: '5px', padding: '5px 8px', cursor: 'pointer' };
+const btnRed = { backgroundColor: '#ffebee', color: '#d32f2f', border: 'none', borderRadius: '5px', padding: '5px 8px', cursor: 'pointer' };
+const btnMini = { padding: '5px 10px', backgroundColor: '#eee', border: 'none', borderRadius: '5px', cursor: 'pointer' };
+const btnLetter = (act) => ({ padding: '3px', minWidth: '22px', fontSize: '10px', backgroundColor: act ? '#d81b60' : '#f0f0f0', color: act ? '#fff' : '#333', border: '1px solid #ddd', borderRadius: '3px' });
+const alphabetNav = { display: 'flex', flexWrap: 'wrap', gap: '2px', marginBottom: '10px' };
+const label = { fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '3px' };
+const agendaTitle = { borderBottom: '2px solid #d81b60', paddingBottom: '5px', fontSize: '16px' };
+const calendarHeader = { display: 'flex', justifyContent: 'space-between', marginBottom: '10px' };
+const dayName = { textAlign: 'center', fontSize: '10px', fontWeight: 'bold', color: '#999' };
+const linkToggle = { color: '#d81b60', fontSize: '13px', marginTop: '15px', cursor: 'pointer' };
+const btnSair = { backgroundColor: 'transparent', color: '#f44336', border: '1px solid #f44336', borderRadius: '5px', padding: '5px 10px', fontSize: '12px', cursor: 'pointer' };
+
+// Adição de CSS para impressão (injetado via JS para simplicidade no Render)
+if (typeof document !== 'undefined') {
+  const style = document.createElement('style');
+  style.innerHTML = `
+    @media print {
+      .no-print, nav, button, header, input, select { display: none !important; }
+      .main-app { max-width: 100% !important; margin: 0 !important; padding: 20px !important; }
+      .card { border: 1px solid #000 !important; }
+      body { background: white !important; }
+    }
+  `;
+  document.head.appendChild(style);
+}
