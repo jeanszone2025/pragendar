@@ -1023,4 +1023,4 @@ const itemStyle = { display: 'flex', alignItems: 'center', padding: '10px', bord
 const cardStyle = { padding: '15px', borderRadius: '10px', marginBottom: '15px', border: '1px solid #eee', backgroundColor: '#fff' };
 const modalOverlay = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 };
 const modalContent = { backgroundColor: '#fff', padding: '20px', borderRadius: '15px', width: '90%', maxWidth: '350px' };
-const dropdownStyle = { position: 'absolute', top: '45px', left: 0, width: '100%', backgroundColor: '#fff', border: '1px solid #ccc', zIndex: 10, maxHeight: '80px', overfl
+const dropdownStyle = { position: 'absolute', top: '45px', left: 0, width: '100%', backgroundColor: '#fff', border: '1px solid #ccc', zIndex: 10, maxHeight: '80px', overfl };
