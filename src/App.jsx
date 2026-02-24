@@ -8,6 +8,10 @@ export default function App() {
   const [services, setServices] = useState([]);
   const [appointments, setAppointments] = useState([]);
   
+  // Estados de Busca e Filtro
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedLetter, setSelectedLetter] = useState("");
+
   const [editId, setEditId] = useState(null);
   const [nomeCliente, setNomeCliente] = useState("");
   const [telefone, setTelefone] = useState("");
@@ -17,6 +21,8 @@ export default function App() {
   const [selCliente, setSelCliente] = useState("");
   const [selServico, setSelServico] = useState("");
   const [dataHora, setDataHora] = useState("");
+
+  const alfabeto = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
   async function loadData() {
     try {
@@ -31,39 +37,33 @@ export default function App() {
 
   useEffect(() => { loadData(); }, []);
 
-  // --- NOVA FUNÇÃO: IMPORTAR CSV ---
+  // Lógica de Filtragem de Clientes
+  const clientesFiltrados = clients
+    .filter(c => c.nome.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter(c => selectedLetter === "" || c.nome.toUpperCase().startsWith(selectedLetter))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+
   const handleImportCSV = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = async (event) => {
       const text = event.target.result;
       const lines = text.split("\n");
-      const batch = writeBatch(db); // Batch permite salvar vários de uma vez (mais rápido)
-
-      // Ignora o cabeçalho e percorre as linhas
+      const batch = writeBatch(db);
       lines.slice(1).forEach((line) => {
-        const columns = line.split(","); // Ajuste para ";" se seu CSV usar ponto e vírgula
+        const columns = line.split(",");
         if (columns.length >= 2) {
           const nome = columns[0].trim().replace(/"/g, "");
           const fone = columns[1].trim().replace(/"/g, "");
-          
           if (nome) {
             const newClientRef = doc(collection(db, "clients"));
-            batch.set(newClientRef, {
-              nome: nome,
-              telefone: fone,
-              tenantId: "CRIS",
-              createdAt: serverTimestamp()
-            });
+            batch.set(newClientRef, { nome, telefone: fone, tenantId: "CRIS", createdAt: serverTimestamp() });
           }
         }
       });
-
       await batch.commit();
-      alert("Contatos importados com sucesso!");
-      loadData();
+      alert("Importado!"); loadData();
     };
     reader.readAsText(file);
   };
@@ -129,7 +129,7 @@ export default function App() {
             <form onSubmit={handleAppointment}>
               <select value={selCliente} onChange={e => setSelCliente(e.target.value)} style={inputStyle}>
                 <option value="">Selecione a Cliente</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                {clients.sort((a,b) => a.nome.localeCompare(b.nome)).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
               </select>
               <select value={selServico} onChange={e => setSelServico(e.target.value)} style={inputStyle}>
                 <option value="">Selecione o Serviço</option>
@@ -160,19 +160,39 @@ export default function App() {
               <input placeholder="Telefone" value={telefone} onChange={e => setTelefone(e.target.value)} style={inputStyle} />
               <button type="submit" style={btnStyle}>{editId ? "Salvar" : "Cadastrar"}</button>
             </form>
-            
             {!editId && (
-              <div style={{marginTop: '15px', borderTop: '1px dashed #ccc', paddingTop: '10px'}}>
-                <label style={{fontSize: '12px', display: 'block', marginBottom: '5px'}}>Importar contatos (CSV):</label>
-                <input type="file" accept=".csv" onChange={handleImportCSV} style={{fontSize: '12px'}} />
+              <div style={{marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed #ccc'}}>
+                <label style={{fontSize: '11px'}}>Importar CSV:</label>
+                <input type="file" accept=".csv" onChange={handleImportCSV} style={{fontSize: '11px', marginLeft: '5px'}} />
               </div>
             )}
           </section>
-          {clients.map(c => (
+
+          {/* BUSCADOR E FILTRO A-Z */}
+          <div style={{ marginBottom: '15px' }}>
+            <input 
+              placeholder="🔍 Buscar cliente pelo nome..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{ ...inputStyle, marginBottom: '10px' }}
+            />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', justifyContent: 'center' }}>
+              <button onClick={() => setSelectedLetter("")} style={btnLetter(selectedLetter === "")}>Tudo</button>
+              {alfabeto.map(letra => (
+                <button key={letra} onClick={() => setSelectedLetter(letra)} style={btnLetter(selectedLetter === letra)}>
+                  {letra}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <p style={{fontSize: '12px', color: '#666'}}>{clientesFiltrados.length} clientes encontrados</p>
+          
+          {clientesFiltrados.map(c => (
             <div key={c.id} style={itemStyle}>
-              <span>{c.nome} - {c.telefone}</span>
+              <span><strong>{c.nome}</strong> - {c.telefone}</span>
               <div>
-                <button onClick={() => {setEditId(c.id); setNomeCliente(c.nome); setTelefone(c.telefone)}} style={btnEdit}>✏️</button>
+                <button onClick={() => {setEditId(c.id); setNomeCliente(c.nome); setTelefone(c.telefone); setTab("clientes")}} style={btnEdit}>✏️</button>
                 <button onClick={() => deleteItem("clients", c.id)} style={btnDel}>🗑️</button>
               </div>
             </div>
@@ -180,7 +200,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Aba de Serviços mantida igual */}
       {tab === "servicos" && (
         <div>
           <section style={cardStyle}>
@@ -192,7 +211,7 @@ export default function App() {
               <button type="submit" style={btnStyle}>Salvar</button>
             </form>
           </section>
-          {services.map(s => (
+          {services.sort((a,b) => a.nome.localeCompare(b.nome)).map(s => (
             <div key={s.id} style={itemStyle}>
               <span>{s.nome} - R${s.preco}</span>
               <div>
@@ -210,7 +229,17 @@ export default function App() {
 const btnTab = (active) => ({ flex: 1, padding: '10px', backgroundColor: active ? '#d81b60' : '#eee', color: active ? 'white' : 'black', border: 'none', borderRadius: '5px', cursor: 'pointer' });
 const cardStyle = { backgroundColor: '#fff0f5', padding: '15px', borderRadius: '10px', marginBottom: '20px', border: '1px solid #f8bbd0' };
 const inputStyle = { width: '100%', padding: '10px', marginBottom: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' };
-const btnStyle = { width: '100%', padding: '12px', backgroundColor: '#d81b60', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' };
+const btnStyle = { width: '100%', padding: '12px', backgroundColor: '#d81b60', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' };
 const itemStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', borderBottom: '1px solid #eee' };
-const btnDel = { backgroundColor: '#ffcdd2', color: '#c62828', border: 'none', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer' };
-const btnEdit = { backgroundColor: '#e1f5fe', color: '#0277bd', border: 'none', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer' };
+const btnDel = { backgroundColor: '#ffcdd2', color: '#c62828', border: 'none', padding: '5px 8px', borderRadius: '5px', cursor: 'pointer' };
+const btnEdit = { backgroundColor: '#e1f5fe', color: '#0277bd', border: 'none', padding: '5px 8px', borderRadius: '5px', cursor: 'pointer', marginRight: '5px' };
+const btnLetter = (active) => ({ 
+  padding: '5px', 
+  minWidth: '25px', 
+  fontSize: '10px', 
+  backgroundColor: active ? '#d81b60' : '#f0f0f0', 
+  color: active ? 'white' : '#333', 
+  border: '1px solid #ddd', 
+  borderRadius: '3px', 
+  cursor: 'pointer' 
+});
