@@ -9,12 +9,12 @@ export default function App() {
   const [appointments, setAppointments] = useState([]);
   const [transactions, setTransactions] = useState([]);
 
-  // Estados de Calendário
+  // Estados do Calendário
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMonth, setViewMonth] = useState(new Date().getMonth());
   const [viewYear, setViewYear] = useState(new Date().getFullYear());
 
-  // Estados de Busca e Filtro (Clientes)
+  // Estados de Busca e Filtro
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedLetter, setSelectedLetter] = useState("");
   const alfabeto = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
@@ -26,9 +26,9 @@ export default function App() {
   const [clientSearch, setClientSearch] = useState("");
   const [selServico, setSelServico] = useState("");
   const [selHora, setSelHora] = useState("");
+  const [editId, setEditId] = useState(null);
 
   // Estados de Cadastro
-  const [editId, setEditId] = useState(null);
   const [nomeCliente, setNomeCliente] = useState("");
   const [telefone, setTelefone] = useState("");
   const [nomeServico, setNomeServico] = useState("");
@@ -50,61 +50,66 @@ export default function App() {
       setAppointments(qA.docs.map(d => ({ id: d.id, ...d.data() })));
       const qT = await getDocs(collection(db, "transactions"));
       setTransactions(qT.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch (e) { console.error(e); }
+    } catch (error) { console.error("Erro ao carregar:", error); }
   }
 
   useEffect(() => { loadData(); }, []);
 
-  // --- LÓGICA DE BLOQUEIO POR DURAÇÃO ---
+  // --- LOGICA DE BLOQUEIO DE HORARIOS ---
   const getAppDoHorario = (hora) => {
     const dSel = new Date(selectedDate);
     return appointments.find(a => {
       const inicio = new Date(a.dataHora);
       const serv = services.find(s => s.id === a.serviceId);
-      const dur = serv ? Number(serv.duracao) : 60;
-      const fim = new Date(inicio.getTime() + dur * 60000);
-      
+      const dMin = serv ? Number(serv.duracao) : 60;
       const mesmaData = inicio.getDate() === dSel.getDate() && inicio.getMonth() === dSel.getMonth() && inicio.getFullYear() === dSel.getFullYear();
       if (!mesmaData) return false;
-
-      const horaAgenda = hora;
-      const horaInicio = inicio.getHours();
-      const horaFim = inicio.getHours() + (inicio.getMinutes() + dur) / 60;
-      return horaAgenda >= horaInicio && horaAgenda < Math.ceil(horaFim);
+      const hInicio = inicio.getHours();
+      const hFim = hInicio + (inicio.getMinutes() + dMin) / 60;
+      return hora >= hInicio && hora < Math.ceil(hFim);
     });
   };
 
-  // --- FINANCEIRO ---
+  // --- ACOES ---
   const handleConfirmPayment = async (app) => {
     const serv = services.find(s => s.id === app.serviceId);
     const cli = clients.find(c => c.id === app.clientId);
     await addDoc(collection(db, "transactions"), {
-      descricao: `Atendimento: ${cli?.nome}`, valor: serv?.preco || 0, tipo: "receita", data: new Date().toISOString(), tenantId: "CRIS", createdAt: serverTimestamp()
+      descricao: `Pago: ${cli?.nome} (${serv?.nome})`,
+      valor: serv?.preco || 0,
+      tipo: "receita",
+      data: new Date().toISOString(),
+      tenantId: "CRIS"
     });
     await updateDoc(doc(db, "appointments", app.id), { status: "pago" });
-    loadData(); alert("Pago!");
+    loadData();
   };
 
-  const calcTotal = (tipo, periodo) => {
-    const hoje = new Date().toLocaleDateString('pt-BR');
-    const mes = new Date().getMonth();
-    return transactions.filter(t => {
-      const d = new Date(t.data);
-      if(periodo === "hoje") return d.toLocaleDateString('pt-BR') === hoje && t.tipo === tipo;
-      return d.getMonth() === mes && t.tipo === tipo;
-    }).reduce((acc, curr) => acc + curr.valor, 0);
+  const handleImportCSV = (e) => {
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const batch = writeBatch(db);
+      event.target.result.split("\n").slice(1).forEach(line => {
+        const col = line.split(",");
+        if(col[0]) batch.set(doc(collection(db, "clients")), { nome: col[0].trim(), telefone: col[1]?.trim(), tenantId: "CRIS", createdAt: serverTimestamp() });
+      });
+      await batch.commit(); loadData();
+    };
+    reader.readAsText(file);
   };
 
-  // --- CLIENTES FILTRADOS ---
-  const clientesFiltrados = clients
-    .filter(c => c.nome?.toLowerCase().includes(searchTerm.toLowerCase()))
-    .filter(c => selectedLetter === "" || c.nome?.toUpperCase().startsWith(selectedLetter))
-    .sort((a, b) => a.nome?.localeCompare(b.nome));
+  const deleteWithConfirm = async (col, id, nome, tel = "") => {
+    if (window.confirm(`Deseja excluir ${nome} ${tel ? `(${tel})` : ""}?`)) {
+      await deleteDoc(doc(db, col, id));
+      loadData();
+    }
+  };
 
   const getNome = (list, id) => list.find(i => i.id === id)?.nome || "---";
 
   return (
-    <div style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '500px', margin: 'auto', backgroundColor: '#fdfdfd' }}>
+    <div style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '500px', margin: 'auto' }}>
       <h1 style={{ color: '#d81b60', textAlign: 'center' }}>Pragendar R$</h1>
       
       <div style={{ display: 'flex', gap: '5px', marginBottom: '15px', overflowX: 'auto' }}>
@@ -126,7 +131,9 @@ export default function App() {
               <div key={dia} onClick={() => setSelectedDate(new Date(viewYear, viewMonth, dia))}
                 style={{ padding: '8px 0', textAlign: 'center', borderRadius: '5px', cursor: 'pointer', border: '1px solid #eee',
                 backgroundColor: selectedDate.getDate() === dia && selectedDate.getMonth() === viewMonth ? '#d81b60' : '#fff',
-                color: selectedDate.getDate() === dia && selectedDate.getMonth() === viewMonth ? '#fff' : '#333' }}>{dia}</div>
+                color: selectedDate.getDate() === dia && selectedDate.getMonth() === viewMonth ? '#fff' : '#333' }}>
+                {dia}
+              </div>
             ))}
           </div>
           <h3>{selectedDate.toLocaleDateString('pt-BR')}</h3>
@@ -135,18 +142,18 @@ export default function App() {
             const isStart = app && new Date(app.dataHora).getHours() === hora;
             return (
               <div key={hora} style={{ ...itemStyle, borderLeft: app?.status === 'pago' ? '5px solid #4caf50' : (app ? '5px solid #ff9800' : '1px solid #eee') }}>
-                <div style={{ width: '45px', fontWeight: 'bold' }}>{hora}:00</div>
+                <div style={{ width: '50px', fontWeight: 'bold' }}>{hora}:00</div>
                 <div style={{ flex: 1 }}>
                   {app ? (
-                    <div onClick={() => { setSelHora(hora); setEditAppId(app.id); setSelCliente(app.clientId); setSelServico(app.serviceId); setClientSearch(getNome(clients, app.clientId)); setShowModal(true); }} style={{cursor:'pointer'}}>
-                       <strong>{getNome(clients, app.clientId)}</strong> {isStart && `- ${getNome(services, app.serviceId)}`}
+                    <div onClick={() => {setSelHora(hora); setEditAppId(app.id); setSelCliente(app.clientId); setSelServico(app.serviceId); setClientSearch(getNome(clients, app.clientId)); setShowModal(true);}} style={{cursor:'pointer', opacity: isStart ? 1 : 0.6}}>
+                      <strong>{getNome(clients, app.clientId)}</strong> {isStart && `- ${getNome(services, app.serviceId)}`}
                     </div>
                   ) : (
                     <span onClick={() => {setSelHora(hora); setEditAppId(null); setSelCliente(""); setClientSearch(""); setShowModal(true);}} style={{color: '#4caf50', cursor:'pointer'}}>+ Disponível</span>
                   )}
                 </div>
                 {isStart && app.status !== "pago" && <button onClick={() => handleConfirmPayment(app)} style={btnPay}>$</button>}
-                {isStart && <button onClick={() => {if(window.confirm("Excluir?")) deleteDoc(doc(db, "appointments", app.id)).then(loadData)}} style={btnDel}>X</button>}
+                {isStart && <button onClick={() => deleteWithConfirm("appointments", app.id, getNome(clients, app.clientId))} style={btnDel}>X</button>}
               </div>
             );
           })}
@@ -156,27 +163,14 @@ export default function App() {
       {tab === "financeiro" && (
         <div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '15px' }}>
-            <div style={{ ...cardStyle, backgroundColor: '#e8f5e9' }}>Hoje: <strong>R$ {calcTotal("receita", "hoje")}</strong></div>
-            <div style={{ ...cardStyle, backgroundColor: '#f3e5f5' }}>Mês: <strong>R$ {calcTotal("receita", "mes")}</strong></div>
+            <div style={{ ...cardStyle, backgroundColor: '#e8f5e9' }}>Hoje: <strong>R$ {calcTotal(transactions, "hoje")}</strong></div>
+            <div style={{ ...cardStyle, backgroundColor: '#f3e5f5' }}>Mês: <strong>R$ {calcTotal(transactions, "mes")}</strong></div>
           </div>
-          <section style={cardStyle}>
-            <h3>Entradas/Saídas Manuais</h3>
-            <input placeholder="O que é? (ex: Compra Esmalte)" value={descFin} onChange={e => setDescFin(e.target.value)} style={inputStyle} />
-            <input placeholder="Valor" type="number" value={valorFin} onChange={e => setValorFin(e.target.value)} style={inputStyle} />
-            <select value={tipoFin} onChange={e => setTipoFin(e.target.value)} style={inputStyle}>
-              <option value="receita">Entrada</option>
-              <option value="despesa">Saída</option>
-            </select>
-            <button onClick={async () => {
-              await addDoc(collection(db, "transactions"), { descricao: descFin, valor: Number(valorFin), tipo: tipoFin, data: new Date().toISOString(), tenantId: "CRIS" });
-              setDescFin(""); setValorFin(""); loadData();
-            }} style={btnStyle}>Gravar</button>
-          </section>
-          <h3>Extrato de Hoje</h3>
-          {transactions.filter(t => new Date(t.data).toLocaleDateString() === new Date().toLocaleDateString()).map(t => (
+          <h3>Extrato do Dia</h3>
+          {transactions.filter(t => new Date(t.data).toLocaleDateString('pt-BR') === new Date().toLocaleDateString('pt-BR')).map(t => (
             <div key={t.id} style={itemStyle}>
-              <small>{new Date(t.data).toLocaleTimeString().slice(0,5)} - {t.descricao}</small>
-              <strong style={{color: t.tipo === 'receita' ? 'green' : 'red'}}>{t.tipo==='receita'?'+':'-'} R$ {t.valor}</strong>
+              <span>{t.descricao}</span>
+              <strong style={{color: t.tipo==='receita'?'green':'red'}}>{t.tipo==='receita'?'+':'-'} R${t.valor}</strong>
             </div>
           ))}
         </div>
@@ -185,7 +179,7 @@ export default function App() {
       {tab === "clientes" && (
         <div>
           <section style={cardStyle}>
-            <h3>{editId ? "Editar" : "Nova"} Cliente</h3>
+            <h3>{editId ? "Editar" : "Novo"} Cliente</h3>
             <input placeholder="Nome" value={nomeCliente} onChange={e => setNomeCliente(e.target.value)} style={inputStyle} />
             <input placeholder="Telefone" value={telefone} onChange={e => setTelefone(e.target.value)} style={inputStyle} />
             <button onClick={async () => {
@@ -193,19 +187,19 @@ export default function App() {
               if(editId) await updateDoc(doc(db, "clients", editId), d);
               else await addDoc(collection(db, "clients"), d);
               setEditId(null); setNomeCliente(""); setTelefone(""); loadData();
-            }} style={btnStyle}>Salvar Cliente</button>
+            }} style={btnStyle}>Salvar</button>
+            <input type="file" onChange={handleImportCSV} style={{marginTop:'10px', fontSize:'10px'}} />
           </section>
           <input placeholder="🔍 Buscar..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={inputStyle} />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', marginBottom: '10px' }}>
             {alfabeto.map(l => <button key={l} onClick={() => setSelectedLetter(l)} style={btnLetter(selectedLetter === l)}>{l}</button>)}
-            <button onClick={() => setSelectedLetter("")} style={btnLetter(selectedLetter === "")}>Tudo</button>
           </div>
-          {clientesFiltrados.map(c => (
+          {clients.filter(c => c.nome.toLowerCase().includes(searchTerm.toLowerCase()) && (selectedLetter==="" || c.nome.toUpperCase().startsWith(selectedLetter))).map(c => (
             <div key={c.id} style={itemStyle}>
-              {c.nome} 
+              {c.nome} ({c.telefone})
               <div>
                 <button onClick={() => {setEditId(c.id); setNomeCliente(c.nome); setTelefone(c.telefone)}} style={btnEdit}>✏️</button>
-                <button onClick={() => deleteDoc(doc(db, "clients", c.id)).then(loadData)} style={btnDel}>🗑️</button>
+                <button onClick={() => deleteWithConfirm("clients", c.id, c.nome, c.telefone)} style={btnDel}>🗑️</button>
               </div>
             </div>
           ))}
@@ -215,22 +209,33 @@ export default function App() {
       {tab === "servicos" && (
         <div>
           <section style={cardStyle}>
-            <input placeholder="Serviço" value={nomeServico} onChange={e => setNomeServico(e.target.value)} style={inputStyle} />
+            <h3>{editId ? "Editar" : "Novo"} Serviço</h3>
+            <input placeholder="Nome" value={nomeServico} onChange={e => setNomeServico(e.target.value)} style={inputStyle} />
             <input placeholder="Preço" type="number" value={preco} onChange={e => setPreco(e.target.value)} style={inputStyle} />
             <input placeholder="Duração (min)" type="number" value={duracao} onChange={e => setDuracao(e.target.value)} style={inputStyle} />
             <button onClick={async () => {
-              await addDoc(collection(db, "services"), { nome: nomeServico, preco: Number(preco), duracao: Number(duracao), tenantId: "CRIS" });
-              setNomeServico(""); setPreco(""); setDuracao(""); loadData();
-            }} style={btnStyle}>Cadastrar Serviço</button>
+              const d = { nome: nomeServico, preco: Number(preco), duracao: Number(duracao), tenantId: "CRIS" };
+              if(editId) await updateDoc(doc(db, "services", editId), d);
+              else await addDoc(collection(db, "services"), d);
+              setEditId(null); setNomeServico(""); setPreco(""); setDuracao(""); loadData();
+            }} style={btnStyle}>Salvar</button>
           </section>
-          {services.map(s => <div key={s.id} style={itemStyle}>{s.nome} - R${s.preco} ({s.duracao}min)</div>)}
+          {services.map(s => (
+            <div key={s.id} style={itemStyle}>
+              {s.nome} - R${s.preco} ({s.duracao}min)
+              <div>
+                <button onClick={() => {setEditId(s.id); setNomeServico(s.nome); setPreco(s.preco); setDuracao(s.duracao)}} style={btnEdit}>✏️</button>
+                <button onClick={() => deleteWithConfirm("services", s.id, s.nome)} style={btnDel}>🗑️</button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
       {showModal && (
         <div style={modalOverlay}>
           <div style={modalContent}>
-            <h3>Agendar às {selHora}:00</h3>
+            <h3>{editAppId ? "Editar" : "Novo"} Agendamento {selHora}:00</h3>
             <input placeholder="🔍 Buscar cliente..." value={clientSearch} onChange={e => {setClientSearch(e.target.value); setSelCliente("");}} style={inputStyle} />
             {clientSearch && !selCliente && (
               <div style={dropdownStyle}>
@@ -241,14 +246,14 @@ export default function App() {
             )}
             <select value={selServico} onChange={e => setSelServico(e.target.value)} style={inputStyle}>
               <option value="">Selecione o Serviço</option>
-              {services.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+              {services.map(s => <option key={s.id} value={s.id}>{s.nome} (R${s.preco})</option>)}
             </select>
             <button onClick={async () => {
-              if(!selCliente || !selServico) return alert("Erro: Selecione a cliente e o serviço!");
+              if(!selCliente || !selServico) return alert("Selecione Cliente e Serviço!");
               const dFinal = new Date(selectedDate); dFinal.setHours(selHora, 0, 0, 0);
-              const data = { clientId: selCliente, serviceId: selServico, dataHora: dFinal.toISOString(), status: "pendente", tenantId: "CRIS" };
-              if(editAppId) await updateDoc(doc(db, "appointments", editAppId), data);
-              else await addDoc(collection(db, "appointments"), data);
+              const d = { clientId: selCliente, serviceId: selServico, dataHora: dFinal.toISOString(), status: "pendente", tenantId: "CRIS" };
+              if(editAppId) await updateDoc(doc(db, "appointments", editAppId), d);
+              else await addDoc(collection(db, "appointments"), d);
               setShowModal(false); loadData();
             }} style={btnStyle}>Confirmar</button>
             <button onClick={() => setShowModal(false)} style={{...btnStyle, backgroundColor:'#ccc', marginTop:'5px'}}>Sair</button>
@@ -259,8 +264,18 @@ export default function App() {
   );
 }
 
-// ESTILOS
-const btnTab = (active) => ({ flex: 1, padding: '10px', backgroundColor: active ? '#d81b60' : '#eee', color: active ? 'white' : 'black', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '11px' });
+// Auxiliares
+const calcTotal = (list, p) => {
+  const h = new Date().toLocaleDateString('pt-BR');
+  const m = new Date().getMonth();
+  return list.filter(t => {
+    const d = new Date(t.data);
+    return (p === "hoje" ? d.toLocaleDateString('pt-BR') === h : d.getMonth() === m) && t.tipo === "receita";
+  }).reduce((acc, c) => acc + c.valor, 0);
+};
+
+// Estilos
+const btnTab = (active) => ({ flex: 1, padding: '10px', backgroundColor: active ? '#d81b60' : '#eee', color: active ? 'white' : 'black', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '12px' });
 const btnMini = { padding: '5px 15px', backgroundColor: '#eee', border: 'none', borderRadius: '5px', cursor: 'pointer' };
 const inputStyle = { width: '100%', padding: '10px', marginBottom: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' };
 const btnStyle = { width: '100%', padding: '12px', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', backgroundColor: '#d81b60' };
