@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, getDocs, addDoc, deleteDoc, updateDoc, doc, query, where, setDoc, getDoc } from "firebase/firestore";
+import { collection, getDocs, addDoc, deleteDoc, updateDoc, doc, query, where, setDoc, getDoc, writeBatch } from "firebase/firestore";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, auth, storage } from "./firebase";
@@ -14,6 +14,7 @@ export default function App() {
   const [services, setServices] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [inventory, setInventory] = useState([]);
   const [profile, setProfile] = useState(null);
 
   // --- ESTADOS DE INTERFACE E CALENDÁRIO ---
@@ -27,6 +28,8 @@ export default function App() {
   // --- ESTADOS DE MODAL E EDIÇÃO ---
   const [showModal, setShowModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showClientHistoryModal, setShowClientHistoryModal] = useState(false);
+  const [selectedClientForHistory, setSelectedClientForHistory] = useState(null);
   const [editAppId, setEditAppId] = useState(null);
   const [selCliente, setSelCliente] = useState("");
   const [clientSearch, setClientSearch] = useState("");
@@ -52,11 +55,18 @@ export default function App() {
   const [telefoneProfissional, setTelefoneProfissional] = useState("");
   const [horarioAbertura, setHorarioAbertura] = useState("09:00");
   const [horarioFechamento, setHorarioFechamento] = useState("19:00");
+  const [fidelidadeLimit, setFidelidadeLimit] = useState(10);
   const [editingProfile, setEditingProfile] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
   // --- ESTADOS CSV ---
   const [importingCSV, setImportingCSV] = useState(false);
+
+  // --- ESTADOS ESTOQUE ---
+  const [nomeProduto, setNomeProduto] = useState("");
+  const [qtdProduto, setQtdProduto] = useState("");
+  const [alerta, setAlerta] = useState("");
+  const [editProductId, setEditProductId] = useState(null);
 
   // ========== MONITORAMENTO DE AUTENTICAÇÃO ==========
   useEffect(() => {
@@ -86,7 +96,7 @@ export default function App() {
     }
   };
 
-  // ========== CORREÇÃO: Função loadData com parâmetro uid ==========
+  // ========== FUNÇÃO loadData COM PARÂMETRO UID ==========
   async function loadData(uid) {
     try {
       if (!uid) return;
@@ -102,12 +112,15 @@ export default function App() {
 
       const qT = await getDocs(query(collection(db, "transactions"), where("tenantId", "==", uid)));
       setTransactions(qT.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      const qI = await getDocs(query(collection(db, "inventory"), where("tenantId", "==", uid)));
+      setInventory(qI.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (error) { 
       console.error("Erro ao carregar dados:", error); 
     }
   }
 
-  // ========== CORREÇÃO: Função loadProfile com parâmetro uid ==========
+  // ========== FUNÇÃO loadProfile COM PARÂMETRO UID ==========
   async function loadProfile(uid) {
     try {
       if (!uid) return;
@@ -123,13 +136,14 @@ export default function App() {
         setTelefoneProfissional(data.telefoneProfissional || "");
         setHorarioAbertura(data.horarioAbertura || "09:00");
         setHorarioFechamento(data.horarioFechamento || "19:00");
+        setFidelidadeLimit(data.fidelidadeLimit || 10);
       }
     } catch (error) { 
       console.error("Erro ao carregar perfil:", error); 
     }
   }
 
-  // ========== CORREÇÃO 3: Upload de Logo com Firebase Storage ==========
+  // ========== UPLOAD DE LOGO ==========
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !user) return;
@@ -140,15 +154,15 @@ export default function App() {
       const snapshot = await uploadBytes(storageRef, file);
       const url = await getDownloadURL(snapshot.ref);
       setLogoUrl(url);
-      alert("✅ Imagem carregada! Clique em 'Salvar Alterações' para confirmar.");
+      alert("✅ Imagem carregada!");
     } catch (error) {
-      alert("❌ Erro ao carregar imagem: " + error.message);
+      alert("❌ Erro: " + error.message);
     } finally {
       setUploadingLogo(false);
     }
   };
 
-  // ========== RESTAURADO: Importação de CSV de Clientes ==========
+  // ========== FIX 1: IMPORTAÇÃO CSV COM WRITEBATCH (ULTRARRÁPIDO) ==========
   const handleCSVImport = async (e) => {
     const file = e.target.files[0];
     if (!file || !user) return;
@@ -157,26 +171,63 @@ export default function App() {
     try {
       const reader = new FileReader();
       reader.onload = async (event) => {
-        const csv = event.target.result;
-        const linhas = csv.split('\n').filter(l => l.trim());
+        let csv = event.target.result;
+        
+        // Remove BOM
+        if (csv.charCodeAt(0) === 0xFEFF) {
+          csv = csv.slice(1);
+        }
+
+        // Normaliza quebras de linha
+        csv = csv.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        
+        const linhas = csv.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        
+        // FIX 1: Usa writeBatch para inserção ultra-rápida
+        const batch = writeBatch(db);
         let importados = 0;
+        let erros = [];
 
         for (let i = 1; i < linhas.length; i++) {
-          const [nome, telefone] = linhas[i].split(',').map(s => s.trim());
-          if (nome && telefone) {
-            await addDoc(collection(db, "clients"), {
-              nome,
-              telefone,
-              tenantId: user.uid
-            });
-            importados++;
+          try {
+            const partes = linhas[i].split(',');
+            const nome = partes[0]?.trim();
+            const telefone = partes[1]?.trim();
+
+            if (nome && nome.length > 0 && telefone && telefone.length > 0) {
+              const newClientRef = doc(collection(db, "clients"));
+              batch.set(newClientRef, {
+                nome,
+                telefone,
+                tenantId: user.uid
+              });
+              importados++;
+
+              // Commit a cada 100 documentos para evitar limite
+              if (importados % 100 === 0) {
+                await batch.commit();
+              }
+            } else if (nome || telefone) {
+              erros.push(`Linha ${i + 1}: Dados incompletos`);
+            }
+          } catch (err) {
+            erros.push(`Linha ${i + 1}: ${err.message}`);
           }
         }
 
+        // Envia o restante
+        if (importados % 100 !== 0) {
+          await batch.commit();
+        }
+
         loadData(user.uid);
-        alert(`✅ ${importados} clientes importados com sucesso!`);
+        let msg = `✅ ${importados} clientes importados ultrarrápido!`;
+        if (erros.length > 0) {
+          msg += `\n⚠️ ${erros.length} linhas puladas`;
+        }
+        alert(msg);
       };
-      reader.readAsText(file);
+      reader.readAsText(file, 'UTF-8');
     } catch (error) {
       alert("❌ Erro ao importar CSV: " + error.message);
     } finally {
@@ -195,18 +246,19 @@ export default function App() {
         telefoneProfissional,
         horarioAbertura,
         horarioFechamento,
+        fidelidadeLimit,
         updatedAt: new Date().toISOString()
       }, { merge: true });
 
       setEditingProfile(false);
       loadProfile(user.uid);
-      alert("✅ Perfil salvo com sucesso!");
+      alert("✅ Perfil salvo!");
     } catch (error) {
-      alert("❌ Erro ao salvar perfil: " + error.message);
+      alert("❌ Erro: " + error.message);
     }
   };
 
-  // --- LÓGICA DE BLOQUEIO DE HORÁRIOS (JANELA DE OCUPAÇÃO) ---
+  // --- LÓGICA DE BLOQUEIO DE HORÁRIOS ---
   const getAppDoHorario = (hora) => {
     const dSel = new Date(selectedDate);
     return appointments.find(a => {
@@ -221,7 +273,74 @@ export default function App() {
     });
   };
 
-  // ========== CORREÇÃO 4: Modal de Pagamento com Seleção de Forma ==========
+  // ========== DASHBOARD GRÁFICOS ==========
+  const getChartData = () => {
+    const dinheiro = transactions.filter(t => t.formaPagamento === 'dinheiro' && t.tipo === 'receita').reduce((acc, t) => acc + t.valor, 0);
+    const cartao = transactions.filter(t => t.formaPagamento === 'cartao' && t.tipo === 'receita').reduce((acc, t) => acc + t.valor, 0);
+    const pix = transactions.filter(t => t.formaPagamento === 'pix' && t.tipo === 'receita').reduce((acc, t) => acc + t.valor, 0);
+    const total = dinheiro + cartao + pix;
+
+    return {
+      dinheiro: total > 0 ? ((dinheiro / total) * 100).toFixed(1) : 0,
+      cartao: total > 0 ? ((cartao / total) * 100).toFixed(1) : 0,
+      pix: total > 0 ? ((pix / total) * 100).toFixed(1) : 0,
+      total: total.toFixed(2),
+      valores: { dinheiro, cartao, pix }
+    };
+  };
+
+  // ========== HISTÓRICO DA CLIENTE ==========
+  const getClientHistory = (clientId) => {
+    const clientApps = appointments.filter(a => a.clientId === clientId);
+    const clientTransactions = transactions.filter(t => t.appointmentId && appointments.find(a => a.id === t.appointmentId && a.clientId === clientId));
+    const totalGasto = clientTransactions.reduce((acc, t) => acc + (t.tipo === 'receita' ? t.valor : 0), 0);
+    
+    return {
+      apps: clientApps,
+      totalGasto,
+      count: clientApps.length
+    };
+  };
+
+  // ========== FIDELIDADE ==========
+  const getClientFidelity = (clientId) => {
+    const paidApps = appointments.filter(a => a.clientId === clientId && a.status === 'pago');
+    const count = paidApps.length;
+    const achieved = count >= fidelidadeLimit;
+    return { count, achieved, limit: fidelidadeLimit };
+  };
+
+  // ========== CONTROLE DE ESTOQUE ==========
+  const handleSaveProduct = async () => {
+    if (!nomeProduto.trim() || !qtdProduto || !alerta) return alert("Preencha todos os campos");
+    try {
+      if (editProductId) {
+        await updateDoc(doc(db, "inventory", editProductId), {
+          nome: nomeProduto,
+          quantidade: Number(qtdProduto),
+          alertaCritico: Number(alerta),
+          updatedAt: new Date().toISOString()
+        });
+      } else {
+        await addDoc(collection(db, "inventory"), {
+          nome: nomeProduto,
+          quantidade: Number(qtdProduto),
+          alertaCritico: Number(alerta),
+          tenantId: user.uid,
+          createdAt: new Date().toISOString()
+        });
+      }
+      setNomeProduto("");
+      setQtdProduto("");
+      setAlerta("");
+      setEditProductId(null);
+      loadData(user.uid);
+    } catch (error) {
+      alert("❌ Erro: " + error.message);
+    }
+  };
+
+  // ========== PAGAMENTO ==========
   const handlePaymentClick = (app) => {
     setSelectedAppForPayment(app);
     setFormaPagamento("pix");
@@ -250,17 +369,17 @@ export default function App() {
       setSelectedAppForPayment(null);
       alert("✅ Pagamento recebido!");
     } catch (error) {
-      alert("❌ Erro ao confirmar pagamento: " + error.message);
+      alert("❌ Erro: " + error.message);
     }
   };
 
-  // ========== NOVO: Função de Lembrete WhatsApp ==========
+  // ========== WHATSAPP LEMBRETE ==========
   const sendWhatsAppReminder = (app) => {
     const cli = clients.find(c => c.id === app.clientId);
     const serv = services.find(s => s.id === app.serviceId);
     
     if (!cli || !cli.telefone) {
-      return alert("❌ Esta cliente não possui telefone cadastrado!");
+      return alert("❌ Cliente sem telefone!");
     }
 
     const dataFmt = new Date(app.dataHora).toLocaleDateString('pt-BR');
@@ -294,7 +413,7 @@ export default function App() {
       setFormaPagamento("pix");
       loadData(user.uid);
     } catch (error) {
-      alert("❌ Erro ao salvar transação: " + error.message);
+      alert("❌ Erro: " + error.message);
     }
   };
 
@@ -303,17 +422,98 @@ export default function App() {
   const getTel = (list, id) => list.find(i => i.id === id)?.telefone || "";
 
   const deleteWithConfirm = async (col, id, nome, extra = "") => {
-    if (window.confirm(`Tem certeza que deseja excluir ${nome} ${extra ? `(${extra})` : ""}?`)) {
+    if (window.confirm(`Excluir ${nome}?`)) {
       try {
         await deleteDoc(doc(db, col, id));
         loadData(user.uid);
       } catch (error) {
-        alert("❌ Erro ao deletar: " + error.message);
+        alert("❌ Erro: " + error.message);
       }
     }
   };
 
-  // ========== RENDERIZAÇÃO CONDICIONAL - TELA DE LOGIN ==========
+  // ========== FIX 2: FUNÇÃO PARA GERAR RELATÓRIO E IMPRIMIR ==========
+  const generateAndPrintReport = () => {
+    const reportWindow = window.open('', 'relatório');
+    const chart = getChartData();
+    const dataAtual = new Date().toLocaleDateString('pt-BR');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Relatório ${nomeEmpresa}</title>
+        <style>
+          @media print {
+            body { margin: 0; padding: 20px; }
+            nav, button, .no-print { display: none !important; }
+            .print-container { width: 100%; background: white; }
+            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+            th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+            th { background-color: #d81b60; color: white; }
+            h2 { color: #333; margin-bottom: 20px; }
+            .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 20px 0; }
+            .summary-card { padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+          }
+          body { font-family: Arial, sans-serif; }
+          .print-container { width: 100%; max-width: 800px; margin: 0 auto; padding: 20px; }
+          h1 { text-align: center; color: #d81b60; }
+        </style>
+      </head>
+      <body>
+        <div class="print-container">
+          <h1>${nomeEmpresa || 'Pragendar R$'}</h1>
+          <p style="text-align: center; color: #666;">Relatório de ${dataAtual}</p>
+          
+          <h2>Resumo Financeiro</h2>
+          <div class="summary">
+            <div class="summary-card">
+              <strong>💵 Dinheiro</strong><br/>
+              R$ ${chart.valores.dinheiro.toFixed(2)} (${chart.dinheiro}%)
+            </div>
+            <div class="summary-card">
+              <strong>💳 Cartão</strong><br/>
+              R$ ${chart.valores.cartao.toFixed(2)} (${chart.cartao}%)
+            </div>
+            <div class="summary-card">
+              <strong>📲 Pix</strong><br/>
+              R$ ${chart.valores.pix.toFixed(2)} (${chart.pix}%)
+            </div>
+          </div>
+          <h3>Total do Mês: R$ ${chart.total}</h3>
+
+          <h2>Agendamentos</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Data/Hora</th>
+                <th>Cliente</th>
+                <th>Serviço</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${appointments.map(a => `
+                <tr>
+                  <td>${new Date(a.dataHora).toLocaleDateString('pt-BR')} ${String(new Date(a.dataHora).getHours()).padStart(2, '0')}:00</td>
+                  <td>${getNome(clients, a.clientId)}</td>
+                  <td>${getNome(services, a.serviceId)}</td>
+                  <td>${a.status === 'pago' ? '✅ Pago' : '⏳ Pendente'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </body>
+      </html>
+    `;
+
+    reportWindow.document.write(html);
+    reportWindow.document.close();
+    setTimeout(() => reportWindow.print(), 500);
+  };
+
+  // ========== RENDERIZAÇÃO CONDICIONAL - LOGIN ==========
   if (!user) {
     return (
       <div style={{ padding: '40px 20px', fontFamily: 'sans-serif', textAlign: 'center', minHeight: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', backgroundColor: '#fafafa' }}>
@@ -351,29 +551,28 @@ export default function App() {
 
   return (
     <div style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '500px', margin: 'auto' }}>
-      {/* HEADER COM LOGO E BOTÃO DE SAIR */}
+      {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {logoUrl && <img src={logoUrl} alt="Logo" style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} />}
-          <div>
-            <h1 style={{ color: '#d81b60', margin: 0, fontSize: '18px' }}>{nomeEmpresa || "Pragendar R$"}</h1>
-          </div>
+          <h1 style={{ color: '#d81b60', margin: 0, fontSize: '18px' }}>{nomeEmpresa || "Pragendar R$"}</h1>
         </div>
         <button onClick={() => signOut(auth)} style={{ padding: '8px 15px', backgroundColor: '#f44336', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
           Sair
         </button>
       </div>
       
-      {/* TABS PRINCIPAIS */}
+      {/* TABS */}
       <div style={{ display: 'flex', gap: '5px', marginBottom: '15px', overflowX: 'auto' }}>
         <button onClick={() => setTab("agenda")} style={btnTab(tab === "agenda")}>Agenda</button>
         <button onClick={() => setTab("financeiro")} style={btnTab(tab === "financeiro")}>Financeiro</button>
         <button onClick={() => setTab("clientes")} style={btnTab(tab === "clientes")}>Clientes</button>
         <button onClick={() => setTab("servicos")} style={btnTab(tab === "servicos")}>Serviços</button>
+        <button onClick={() => setTab("estoque")} style={btnTab(tab === "estoque")}>Estoque</button>
         <button onClick={() => setTab("perfil")} style={btnTab(tab === "perfil")}>Perfil</button>
       </div>
 
-      {/* ABA AGENDA COM CALENDÁRIO E TIMELINE */}
+      {/* === ABA AGENDA === */}
       {tab === "agenda" && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
@@ -396,7 +595,6 @@ export default function App() {
 
           <h3 style={{borderBottom: '2px solid #d81b60'}}>Dia {selectedDate.toLocaleDateString('pt-BR')}</h3>
           
-          {/* ========== CORREÇÃO: Horários dinâmicos baseados no perfil ========== */}
           {(() => {
             const horaInicio = parseInt(horarioAbertura.split(':')[0]) || 8;
             const horaFim = parseInt(horarioFechamento.split(':')[0]) || 19;
@@ -420,15 +618,7 @@ export default function App() {
                   </div>
                   {isStart && app.status !== "pago" && (
                     <div style={{ display: 'flex', gap: '3px' }}>
-                      {/* ========== NOVO: Botão WhatsApp ========== */}
-                      <button 
-                        onClick={() => sendWhatsAppReminder(app)} 
-                        style={{ ...btnWhatsApp }}
-                        title="Enviar Lembrete via WhatsApp"
-                      >
-                        📱
-                      </button>
-                      {/* Botão de Pagar */}
+                      <button onClick={() => sendWhatsAppReminder(app)} style={{ ...btnWhatsApp }} title="WhatsApp">📱</button>
                       <button onClick={() => handlePaymentClick(app)} style={btnPay}>💵</button>
                     </div>
                   )}
@@ -440,18 +630,49 @@ export default function App() {
         </div>
       )}
 
-      {/* ABA FINANCEIRO (COM EDITAR E EXCLUIR) */}
+      {/* === ABA FINANCEIRO === */}
       {tab === "financeiro" && (
         <div>
+          {(() => {
+            const chart = getChartData();
+            return (
+              <div style={cardStyle}>
+                <h3>📊 Resumo do Mês</h3>
+                <p style={{fontSize:'12px', fontWeight:'bold', marginBottom:'10px'}}>Total: R$ {chart.total}</p>
+                
+                <div style={{marginBottom:'15px'}}>
+                  <div style={{marginBottom:'8px'}}>
+                    <small style={{color:'#666'}}>💵 Dinheiro: R$ {chart.valores.dinheiro.toFixed(2)} ({chart.dinheiro}%)</small>
+                    <div style={{width:'100%', height:'10px', backgroundColor:'#eee', borderRadius:'5px', overflow:'hidden'}}>
+                      <div style={{width:`${chart.dinheiro}%`, height:'100%', backgroundColor:'#4caf50'}}></div>
+                    </div>
+                  </div>
+                  <div style={{marginBottom:'8px'}}>
+                    <small style={{color:'#666'}}>💳 Cartão: R$ {chart.valores.cartao.toFixed(2)} ({chart.cartao}%)</small>
+                    <div style={{width:'100%', height:'10px', backgroundColor:'#eee', borderRadius:'5px', overflow:'hidden'}}>
+                      <div style={{width:`${chart.cartao}%`, height:'100%', backgroundColor:'#2196f3'}}></div>
+                    </div>
+                  </div>
+                  <div>
+                    <small style={{color:'#666'}}>📲 Pix: R$ {chart.valores.pix.toFixed(2)} ({chart.pix}%)</small>
+                    <div style={{width:'100%', height:'10px', backgroundColor:'#eee', borderRadius:'5px', overflow:'hidden'}}>
+                      <div style={{width:`${chart.pix}%`, height:'100%', backgroundColor:'#9c27b0'}}></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '15px' }}>
             <div style={{ ...cardStyle, backgroundColor: '#e8f5e9' }}>Hoje: <strong>R$ {calcTotal(transactions, "hoje")}</strong></div>
             <div style={{ ...cardStyle, backgroundColor: '#f3e5f5' }}>Mês: <strong>R$ {calcTotal(transactions, "mes")}</strong></div>
           </div>
           <section style={cardStyle}>
-            <h3>{editId ? "Editar Lançamento" : "Novo Lançamento Manual"}</h3>
+            <h3>{editId ? "Editar" : "Novo"} Lançamento</h3>
             <select value={tipoFin} onChange={e => setTipoFin(e.target.value)} style={inputStyle}>
-              <option value="receita">Receita (Entrada)</option>
-              <option value="despesa">Despesa (Saída)</option>
+              <option value="receita">Receita</option>
+              <option value="despesa">Despesa</option>
             </select>
             <input placeholder="Descrição" value={descFin} onChange={e => setDescFin(e.target.value)} style={inputStyle} />
             <input placeholder="Valor R$" type="number" value={valorFin} onChange={e => setValorFin(e.target.value)} style={inputStyle} />
@@ -463,10 +684,11 @@ export default function App() {
               <option value="pix">📲 Pix</option>
             </select>
 
-            <button onClick={handleSaveTransaction} style={{...btnStyle, backgroundColor: tipoFin==='receita'?'#4caf50':'#f44336'}}>{editId ? "Salvar Alteração" : "Gravar"}</button>
+            <button onClick={handleSaveTransaction} style={{...btnStyle, backgroundColor: tipoFin==='receita'?'#4caf50':'#f44336'}}>{editId ? "Salvar" : "Gravar"}</button>
+            {editId && <button onClick={() => {setEditId(null); setDescFin(''); setValorFin('');}} style={{...btnStyle, backgroundColor:'#ccc', color:'#333', marginTop:'5px'}}>Cancelar</button>}
           </section>
-          <h3>Extrato Detalhado</h3>
-          {transactions.sort((a,b) => b.data.localeCompare(a.data)).map(t => (
+          <h3>Extrato</h3>
+          {transactions.sort((a,b) => b.data.localeCompare(a.data)).slice(0, 20).map(t => (
             <div key={t.id} style={itemStyle}>
               <span style={{flex:1}}>
                 <small>{new Date(t.data).toLocaleDateString('pt-BR')}</small><br/>
@@ -486,7 +708,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ABA CLIENTES (BUSCA A-Z + CSV) */}
+      {/* === ABA CLIENTES === */}
       {tab === "clientes" && (
         <div>
           <section style={cardStyle}>
@@ -494,7 +716,7 @@ export default function App() {
             <input placeholder="Nome" value={nomeCliente} onChange={e => setNomeCliente(e.target.value)} style={inputStyle} />
             <input placeholder="Telefone" value={telefone} onChange={e => setTelefone(e.target.value)} style={inputStyle} />
             <button onClick={async () => {
-              if (!nomeCliente.trim()) return alert("Digite o nome do cliente");
+              if (!nomeCliente.trim()) return alert("Digite o nome");
               const d = { nome: nomeCliente, telefone, tenantId: user.uid };
               try {
                 if(editId) await updateDoc(doc(db, "clients", editId), d);
@@ -503,14 +725,13 @@ export default function App() {
               } catch (error) {
                 alert("❌ Erro: " + error.message);
               }
-            }} style={btnStyle}>Salvar Cliente</button>
+            }} style={btnStyle}>Salvar</button>
           </section>
 
-          {/* ========== RESTAURADO: Importação de CSV ========== */}
           <section style={cardStyle}>
-            <h3>📥 Importar Clientes via CSV</h3>
+            <h3>📥 Importar CSV</h3>
             <p style={{fontSize:'12px', color:'#666', marginBottom:'10px'}}>
-              Formato: Nome,Telefone (cabeçalho obrigatório)
+              ✅ Formato: Nome,Telefone
             </p>
             <input 
               type="file" 
@@ -520,36 +741,40 @@ export default function App() {
               style={inputStyle}
             />
             {importingCSV && <p style={{fontSize:'12px', color:'#2196f3'}}>⏳ Importando...</p>}
-            <p style={{fontSize:'11px', color:'#999', marginTop:'10px'}}>
-              💡 Exemplo: Crie um arquivo com 2 colunas (Nome, Telefone) e salve como .csv
-            </p>
           </section>
 
-          <input placeholder="🔍 Buscar cliente pelo nome..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={inputStyle} />
+          <input placeholder="🔍 Buscar..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={inputStyle} />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', marginBottom: '10px' }}>
-            {alfabeto.map(l => <button key={l} onClick={() => setSelectedLetter(l)} style={btnLetter(selectedLetter === l)}>{l}</button>)}
+            {alfabeto.slice(0, 13).map(l => <button key={l} onClick={() => setSelectedLetter(l)} style={btnLetter(selectedLetter === l)}>{l}</button>)}
             <button onClick={() => setSelectedLetter("")} style={btnLetter(selectedLetter === "")}>Tudo</button>
           </div>
-          {clients.filter(c => c.nome?.toLowerCase().includes(searchTerm.toLowerCase()) && (selectedLetter==="" || c.nome?.toUpperCase().startsWith(selectedLetter))).map(c => (
-            <div key={c.id} style={itemStyle}>
-              <span style={{flex:1}}><strong>{c.nome}</strong><br/><small>{c.telefone}</small></span>
-              <button onClick={() => {setEditId(c.id); setNomeCliente(c.nome); setTelefone(c.telefone)}} style={btnEdit}>✏️</button>
-              <button onClick={() => deleteWithConfirm("clients", c.id, c.nome, c.telefone)} style={btnDel}>🗑️</button>
-            </div>
-          ))}
+          {clients.filter(c => c.nome?.toLowerCase().includes(searchTerm.toLowerCase()) && (selectedLetter==="" || c.nome?.toUpperCase().startsWith(selectedLetter))).slice(0, 50).map(c => {
+            const fidelity = getClientFidelity(c.id);
+            return (
+              <div key={c.id} style={{...itemStyle, borderLeft: fidelity.achieved ? '4px solid #ff9800' : '1px solid #eee'}}>
+                <span style={{flex:1, cursor:'pointer'}} onClick={() => {setSelectedClientForHistory(c); setShowClientHistoryModal(true);}}>
+                  <strong>{c.nome}</strong>
+                  <br/><small>{c.telefone}</small>
+                  {fidelity.achieved && <small style={{color:'#ff9800', fontWeight:'bold'}}> 🎁</small>}
+                </span>
+                <button onClick={() => {setEditId(c.id); setNomeCliente(c.nome); setTelefone(c.telefone)}} style={btnEdit}>✏️</button>
+                <button onClick={() => deleteWithConfirm("clients", c.id, c.nome)} style={btnDel}>🗑️</button>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* ABA SERVIÇOS (COM EDIÇÃO) */}
+      {/* === ABA SERVIÇOS === */}
       {tab === "servicos" && (
         <div>
           <section style={cardStyle}>
-            <h3>{editId ? "Editar Serviço" : "Novo Serviço"}</h3>
-            <input placeholder="Nome do Serviço" value={nomeServico} onChange={e => setNomeServico(e.target.value)} style={inputStyle} />
+            <h3>{editId ? "Editar" : "Novo"} Serviço</h3>
+            <input placeholder="Nome" value={nomeServico} onChange={e => setNomeServico(e.target.value)} style={inputStyle} />
             <input placeholder="Preço R$" type="number" value={preco} onChange={e => setPreco(e.target.value)} style={inputStyle} />
             <input placeholder="Duração (min)" type="number" value={duracao} onChange={e => setDuracao(e.target.value)} style={inputStyle} />
             <button onClick={async () => {
-              if (!nomeServico.trim() || !preco || !duracao) return alert("Preencha todos os campos");
+              if (!nomeServico.trim() || !preco || !duracao) return alert("Preencha todos");
               const d = { nome: nomeServico, preco: Number(preco), duracao: Number(duracao), tenantId: user.uid };
               try {
                 if(editId) await updateDoc(doc(db, "services", editId), d);
@@ -558,7 +783,7 @@ export default function App() {
               } catch (error) {
                 alert("❌ Erro: " + error.message);
               }
-            }} style={btnStyle}>Salvar Serviço</button>
+            }} style={btnStyle}>Salvar</button>
           </section>
           {services.map(s => (
             <div key={s.id} style={itemStyle}>
@@ -570,11 +795,39 @@ export default function App() {
         </div>
       )}
 
-      {/* ABA PERFIL */}
+      {/* === ABA ESTOQUE === */}
+      {tab === "estoque" && (
+        <div>
+          <section style={cardStyle}>
+            <h3>{editProductId ? "Editar" : "Novo"} Produto</h3>
+            <input placeholder="Nome" value={nomeProduto} onChange={e => setNomeProduto(e.target.value)} style={inputStyle} />
+            <input placeholder="Quantidade" type="number" value={qtdProduto} onChange={e => setQtdProduto(e.target.value)} style={inputStyle} />
+            <input placeholder="Alerta Crítico" type="number" value={alerta} onChange={e => setAlerta(e.target.value)} style={inputStyle} />
+            <button onClick={handleSaveProduct} style={btnStyle}>{editProductId ? "Atualizar" : "Adicionar"}</button>
+            {editProductId && <button onClick={() => {setEditProductId(null); setNomeProduto(''); setQtdProduto(''); setAlerta('');}} style={{...btnStyle, backgroundColor:'#ccc', color:'#333', marginTop:'5px'}}>Cancelar</button>}
+          </section>
+          <h3>Inventário</h3>
+          {inventory.map(prod => {
+            const critico = Number(prod.quantidade) <= Number(prod.alertaCritico);
+            return (
+              <div key={prod.id} style={{...itemStyle, borderLeft: critico ? '4px solid #f44336' : '1px solid #eee', backgroundColor: critico ? '#ffebee' : '#fff'}}>
+                <span style={{flex:1}}>
+                  <strong>{prod.nome}</strong><br/>
+                  <small>{prod.quantidade} un. {critico && <span style={{color:'#f44336', fontWeight:'bold'}}>⚠️</span>}</small>
+                </span>
+                <button onClick={() => {setEditProductId(prod.id); setNomeProduto(prod.nome); setQtdProduto(prod.quantidade); setAlerta(prod.alertaCritico);}} style={btnEdit}>✏️</button>
+                <button onClick={() => deleteWithConfirm("inventory", prod.id, prod.nome)} style={btnDel}>🗑️</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* === ABA PERFIL === */}
       {tab === "perfil" && (
         <div>
           <section style={cardStyle}>
-            <h3>Perfil da Profissional</h3>
+            <h3>Perfil</h3>
             {!editingProfile ? (
               <div>
                 <div style={{ marginBottom: '15px', textAlign: 'center' }}>
@@ -582,27 +835,28 @@ export default function App() {
                     <img src={logoUrl} alt="Logo" style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', marginBottom: '10px' }} />
                   ) : (
                     <div style={{ width: '80px', height: '80px', borderRadius: '50%', backgroundColor: '#eee', margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span style={{ fontSize: '12px', color: '#999' }}>📷 Sem Logo</span>
+                      <span style={{ fontSize: '12px', color: '#999' }}>📷</span>
                     </div>
                   )}
                   <p style={{ margin: '5px 0' }}><strong>{nomeEmpresa || "Seu Salão"}</strong></p>
-                  <p style={{ margin: '5px 0', fontSize: '12px', color: '#666' }}>{telefoneProfissional || "Telefone não definido"}</p>
+                  <p style={{ margin: '5px 0', fontSize: '12px', color: '#666' }}>{telefoneProfissional || "Sem telefone"}</p>
                   <p style={{ margin: '5px 0', fontSize: '12px', color: '#666' }}>
                     🕐 {horarioAbertura} às {horarioFechamento}
                   </p>
                 </div>
-                <button onClick={() => setEditingProfile(true)} style={{...btnStyle, backgroundColor: '#2196f3'}}>✏️ Editar Perfil</button>
+                <button onClick={() => setEditingProfile(true)} style={{...btnStyle, backgroundColor: '#2196f3'}}>✏️ Editar</button>
+                <button onClick={generateAndPrintReport} style={{...btnStyle, backgroundColor: '#ff9800', marginTop:'5px'}}>🖨️ Imprimir</button>
               </div>
             ) : (
               <div>
                 <input 
-                  placeholder="Nome da Empresa/Salão" 
+                  placeholder="Nome da Empresa" 
                   value={nomeEmpresa} 
                   onChange={e => setNomeEmpresa(e.target.value)} 
                   style={inputStyle} 
                 />
                 
-                <label style={labelStyle}>📷 Logo do Salão (Clique para carregar)</label>
+                <label style={labelStyle}>📷 Logo</label>
                 <input 
                   type="file" 
                   accept="image/*" 
@@ -610,52 +864,59 @@ export default function App() {
                   disabled={uploadingLogo}
                   style={inputStyle} 
                 />
-                {uploadingLogo && <p style={{fontSize:'12px', color:'#2196f3'}}>⏳ Enviando imagem...</p>}
+                {uploadingLogo && <p style={{fontSize:'12px', color:'#2196f3'}}>⏳ Enviando...</p>}
                 {logoUrl && (
                   <div style={{ textAlign: 'center', marginBottom: '10px' }}>
                     <img src={logoUrl} alt="Preview" style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover' }} />
-                    <p style={{ fontSize: '11px', color: '#4caf50', margin: '5px 0 0 0' }}>✅ Preview da Logo</p>
+                    <p style={{ fontSize: '11px', color: '#4caf50', margin: '5px 0 0 0' }}>✅ OK</p>
                   </div>
                 )}
 
                 <input 
-                  placeholder="Telefone de Contato" 
+                  placeholder="Telefone" 
                   value={telefoneProfissional} 
                   onChange={e => setTelefoneProfissional(e.target.value)} 
                   style={inputStyle} 
                 />
-                <label style={labelStyle}>🕐 Horário de Abertura</label>
+                <label style={labelStyle}>🕐 Abertura</label>
                 <input 
                   type="time"
                   value={horarioAbertura} 
                   onChange={e => setHorarioAbertura(e.target.value)} 
                   style={inputStyle} 
                 />
-                <label style={labelStyle}>🕐 Horário de Fechamento</label>
+                <label style={labelStyle}>🕐 Fechamento</label>
                 <input 
                   type="time"
                   value={horarioFechamento} 
                   onChange={e => setHorarioFechamento(e.target.value)} 
                   style={inputStyle} 
                 />
-                <button onClick={handleSaveProfile} style={{...btnStyle, backgroundColor: '#4caf50'}}>💾 Salvar Alterações</button>
-                <button onClick={() => setEditingProfile(false)} style={{...btnStyle, backgroundColor: '#ccc', color: '#333', marginTop: '5px'}}>❌ Cancelar</button>
+                <label style={labelStyle}>🎁 Fidelidade (atendimentos)</label>
+                <input 
+                  type="number"
+                  value={fidelidadeLimit}
+                  onChange={e => setFidelidadeLimit(Number(e.target.value))}
+                  style={inputStyle}
+                />
+                <button onClick={handleSaveProfile} style={{...btnStyle, backgroundColor: '#4caf50'}}>💾 Salvar</button>
+                <button onClick={() => setEditingProfile(false)} style={{...btnStyle, backgroundColor: '#ccc', color: '#333', marginTop: '5px'}}>❌ Sair</button>
               </div>
             )}
           </section>
         </div>
       )}
 
-      {/* MODAL DE AGENDAMENTO */}
+      {/* === MODAIS === */}
       {showModal && (
         <div style={modalOverlay}>
           <div style={modalContent}>
-            <h3>{editAppId ? "Editar" : "Novo"} Agendamento {String(selHora).padStart(2, '0')}:00</h3>
+            <h3>Agendamento {String(selHora).padStart(2, '0')}:00</h3>
             <div style={{position:'relative'}}>
-              <input placeholder="🔍 Nome da cliente..." value={clientSearch} onChange={e => {setClientSearch(e.target.value); setSelCliente("");}} style={inputStyle} />
+              <input placeholder="🔍 Cliente..." value={clientSearch} onChange={e => {setClientSearch(e.target.value); setSelCliente("");}} style={inputStyle} />
               {clientSearch && !selCliente && (
                 <div style={dropdownStyle}>
-                  {clients.filter(c => c.nome.toLowerCase().includes(clientSearch.toLowerCase())).map(c => (
+                  {clients.filter(c => c.nome.toLowerCase().includes(clientSearch.toLowerCase())).slice(0, 10).map(c => (
                     <div key={c.id} onClick={() => {setSelCliente(c.id); setClientSearch(c.nome)}} style={dropdownItem}>
                       {c.nome} <small>({c.telefone})</small>
                     </div>
@@ -664,11 +925,11 @@ export default function App() {
               )}
             </div>
             <select value={selServico} onChange={e => setSelServico(e.target.value)} style={inputStyle}>
-              <option value="">Selecione o Serviço</option>
+              <option value="">Serviço</option>
               {services.map(s => <option key={s.id} value={s.id}>{s.nome} (R${s.preco})</option>)}
             </select>
             <button onClick={async () => {
-              if(!selCliente || !selServico) return alert("Selecione Cliente e Serviço!");
+              if(!selCliente || !selServico) return alert("Preencha tudo!");
               const dFinal = new Date(selectedDate); dFinal.setHours(selHora, 0, 0, 0);
               const d = { clientId: selCliente, serviceId: selServico, dataHora: dFinal.toISOString(), status: "pendente", tenantId: user.uid };
               try {
@@ -684,11 +945,10 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE PAGAMENTO */}
       {showPaymentModal && selectedAppForPayment && (
         <div style={modalOverlay}>
           <div style={modalContent}>
-            <h3>💳 Confirmar Pagamento</h3>
+            <h3>💳 Pagamento</h3>
             <div style={{textAlign:'center', marginBottom:'15px'}}>
               <p style={{margin:'5px 0'}}><strong>{getNome(clients, selectedAppForPayment.clientId)}</strong></p>
               <p style={{margin:'5px 0', fontSize:'12px', color:'#666'}}>
@@ -696,18 +956,55 @@ export default function App() {
               </p>
             </div>
             
-            <label style={labelStyle}>Forma de Pagamento</label>
+            <label style={labelStyle}>Forma</label>
             <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} style={inputStyle}>
               <option value="dinheiro">💵 Dinheiro</option>
               <option value="cartao">💳 Cartão</option>
               <option value="pix">📲 Pix</option>
             </select>
 
-            <button onClick={confirmPayment} style={{...btnStyle, backgroundColor: '#4caf50'}}>✅ Receber Pagamento</button>
-            <button onClick={() => setShowPaymentModal(false)} style={{...btnStyle, backgroundColor: '#ccc', color: '#333', marginTop: '5px'}}>❌ Cancelar</button>
+            <button onClick={confirmPayment} style={{...btnStyle, backgroundColor: '#4caf50'}}>✅ Confirmar</button>
+            <button onClick={() => setShowPaymentModal(false)} style={{...btnStyle, backgroundColor: '#ccc', color: '#333', marginTop: '5px'}}>❌ Sair</button>
           </div>
         </div>
       )}
+
+      {showClientHistoryModal && selectedClientForHistory && (() => {
+        const history = getClientHistory(selectedClientForHistory.id);
+        const fidelity = getClientFidelity(selectedClientForHistory.id);
+        return (
+          <div style={modalOverlay}>
+            <div style={{...modalContent, maxHeight:'70vh', overflowY:'auto'}}>
+              <h3>📂 {selectedClientForHistory.nome}</h3>
+              <p style={{fontSize:'12px', color:'#666'}}>📞 {selectedClientForHistory.telefone}</p>
+              
+              <div style={{...cardStyle, backgroundColor:'#f5f5f5'}}>
+                <p style={{margin:'5px 0'}}><strong>Total Gasto:</strong> R$ {history.totalGasto.toFixed(2)}</p>
+                <p style={{margin:'5px 0'}}><strong>Atendimentos:</strong> {history.count}</p>
+                <p style={{margin:'5px 0', color: fidelity.achieved ? '#ff9800' : '#999'}}>
+                  <strong>Fidelidade:</strong> {fidelity.count}/{fidelity.limit} {fidelity.achieved && '🎁'}
+                </p>
+              </div>
+
+              <h4>Agendamentos:</h4>
+              {history.apps.length > 0 ? history.apps.slice(0, 15).map(a => {
+                const serv = services.find(s => s.id === a.serviceId);
+                return (
+                  <div key={a.id} style={{...itemStyle, fontSize:'12px'}}>
+                    <span style={{flex:1}}>
+                      {new Date(a.dataHora).toLocaleDateString('pt-BR')} às {String(new Date(a.dataHora).getHours()).padStart(2, '0')}:00<br/>
+                      <strong>{serv?.nome}</strong> - {a.status === 'pago' ? '✅' : '⏳'}
+                    </span>
+                    <strong style={{color:'green'}}>R$ {serv?.preco}</strong>
+                  </div>
+                );
+              }) : <p style={{fontSize:'12px', color:'#999'}}>Nenhum agendamento</p>}
+
+              <button onClick={() => setShowClientHistoryModal(false)} style={{...btnStyle, backgroundColor:'#ccc', color:'#333', marginTop:'10px'}}>Fechar</button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -733,10 +1030,4 @@ const itemStyle = { display: 'flex', alignItems: 'center', padding: '10px', bord
 const cardStyle = { padding: '15px', borderRadius: '10px', marginBottom: '15px', border: '1px solid #eee', backgroundColor: '#fff' };
 const modalOverlay = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 };
 const modalContent = { backgroundColor: '#fff', padding: '20px', borderRadius: '15px', width: '90%', maxWidth: '350px' };
-const dropdownStyle = { position: 'absolute', top: '45px', left: 0, width: '100%', backgroundColor: '#fff', border: '1px solid #ccc', zIndex: 10, maxHeight: '100px', overflowY: 'auto' };
-const dropdownItem = { padding: '8px', cursor: 'pointer', borderBottom: '1px solid #eee' };
-const btnPay = { backgroundColor: '#4caf50', color: '#fff', border: 'none', borderRadius: '5px', padding: '5px 10px', marginLeft: '5px', cursor: 'pointer', fontSize: '14px' };
-const btnWhatsApp = { backgroundColor: '#25D366', color: '#fff', border: 'none', borderRadius: '5px', padding: '5px 10px', marginLeft: '5px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' };
-const btnDel = { backgroundColor: '#ffcdd2', color: '#c62828', border: 'none', borderRadius: '5px', padding: '5px 10px', marginLeft: '5px', cursor: 'pointer' };
-const btnEdit = { backgroundColor: '#e1f5fe', color: '#0277bd', border: 'none', borderRadius: '5px', padding: '5px 10px', cursor: 'pointer' };
-const btnLetter = (active) => ({ padding: '3px', minWidth: '22px', fontSize: '10px', backgroundColor: active ? '#d81b60' : '#f0f0f0', color: active ? 'white' : '#333', border: '1px solid #ddd', borderRadius: '3px', cursor: 'pointer' });
+const dropdownStyle = { position: 'absolute', top: '45px', left: 0, width: '100%', backgroundColor: '#fff', border: '1px solid #ccc', zIndex: 10, maxHeight: '80px', overfl
