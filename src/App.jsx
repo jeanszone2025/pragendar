@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { collection, getDocs, addDoc, deleteDoc, updateDoc, doc, query, where, setDoc, getDoc } from "firebase/firestore";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
-import { db, auth } from "./firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, auth, storage } from "./firebase";
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -25,12 +26,14 @@ export default function App() {
 
   // --- ESTADOS DE MODAL E EDIÇÃO ---
   const [showModal, setShowModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [editAppId, setEditAppId] = useState(null);
   const [selCliente, setSelCliente] = useState("");
   const [clientSearch, setClientSearch] = useState("");
   const [selServico, setSelServico] = useState("");
   const [selHora, setSelHora] = useState("");
   const [editId, setEditId] = useState(null);
+  const [selectedAppForPayment, setSelectedAppForPayment] = useState(null);
 
   // --- ESTADOS DE FORMULÁRIOS ---
   const [nomeCliente, setNomeCliente] = useState("");
@@ -41,7 +44,7 @@ export default function App() {
   const [descFin, setDescFin] = useState("");
   const [valorFin, setValorFin] = useState("");
   const [tipoFin, setTipoFin] = useState("receita");
-  const [formaPagamento, setFormaPagamento] = useState("dinheiro");
+  const [formaPagamento, setFormaPagamento] = useState("pix");
 
   // --- ESTADOS DO PERFIL ---
   const [nomeEmpresa, setNomeEmpresa] = useState("");
@@ -50,14 +53,16 @@ export default function App() {
   const [horarioAbertura, setHorarioAbertura] = useState("09:00");
   const [horarioFechamento, setHorarioFechamento] = useState("19:00");
   const [editingProfile, setEditingProfile] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   // ========== MONITORAMENTO DE AUTENTICAÇÃO ==========
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (loggedUser) => {
       setUser(loggedUser);
       if (loggedUser) {
-        loadData();
-        loadProfile();
+        // ========== CORREÇÃO 1: Passar UID diretamente ==========
+        loadData(loggedUser.uid);
+        loadProfile(loggedUser.uid);
       }
     });
     return unsub;
@@ -79,39 +84,38 @@ export default function App() {
     }
   };
 
-  async function loadData() {
+  // ========== CORREÇÃO: Função loadData com parâmetro uid ==========
+  async function loadData(uid) {
     try {
-      if (!user) return;
+      if (!uid) return;
 
-      // ========== CORREÇÃO: Filtrar por tenantId em TODOS os dados ==========
-      const qC = await getDocs(query(collection(db, "clients"), where("tenantId", "==", user.uid)));
+      const qC = await getDocs(query(collection(db, "clients"), where("tenantId", "==", uid)));
       setClients(qC.docs.map(d => ({ id: d.id, ...d.data() })));
 
-      const qS = await getDocs(query(collection(db, "services"), where("tenantId", "==", user.uid)));
+      const qS = await getDocs(query(collection(db, "services"), where("tenantId", "==", uid)));
       setServices(qS.docs.map(d => ({ id: d.id, ...d.data() })));
 
-      const qA = await getDocs(query(collection(db, "appointments"), where("tenantId", "==", user.uid)));
+      const qA = await getDocs(query(collection(db, "appointments"), where("tenantId", "==", uid)));
       setAppointments(qA.docs.map(d => ({ id: d.id, ...d.data() })));
 
-      const qT = await getDocs(query(collection(db, "transactions"), where("tenantId", "==", user.uid)));
+      const qT = await getDocs(query(collection(db, "transactions"), where("tenantId", "==", uid)));
       setTransactions(qT.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (error) { 
       console.error("Erro ao carregar dados:", error); 
     }
   }
 
-  // ========== FUNÇÕES DO PERFIL COM CORREÇÕES ==========
-  async function loadProfile() {
+  // ========== CORREÇÃO: Função loadProfile com parâmetro uid ==========
+  async function loadProfile(uid) {
     try {
-      if (!user) return;
+      if (!uid) return;
 
-      // ========== CORREÇÃO: Usar getDoc direto com UID como ID do documento ==========
-      const docRef = doc(db, "profiles", user.uid);
+      const docRef = doc(db, "profiles", uid);
       const docSnap = await getDoc(docRef);
 
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setProfile({ id: user.uid, ...data });
+        setProfile({ id: uid, ...data });
         setNomeEmpresa(data.nomeEmpresa || "");
         setLogoUrl(data.logoUrl || "");
         setTelefoneProfissional(data.telefoneProfissional || "");
@@ -123,7 +127,25 @@ export default function App() {
     }
   }
 
-  // ========== CORREÇÃO: Usar setDoc em vez de addDoc ==========
+  // ========== CORREÇÃO 3: Upload de Logo com Firebase Storage ==========
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !user) return;
+
+    setUploadingLogo(true);
+    try {
+      const storageRef = ref(storage, `logos/${user.uid}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(snapshot.ref);
+      setLogoUrl(url);
+      alert("✅ Imagem carregada! Clique em 'Salvar Alterações' para confirmar.");
+    } catch (error) {
+      alert("❌ Erro ao carregar imagem: " + error.message);
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
   const handleSaveProfile = async () => {
     try {
       if (!user) return;
@@ -139,10 +161,10 @@ export default function App() {
       }, { merge: true });
 
       setEditingProfile(false);
-      loadProfile();
-      alert("Perfil salvo com sucesso!");
+      loadProfile(user.uid);
+      alert("✅ Perfil salvo com sucesso!");
     } catch (error) {
-      alert("Erro ao salvar perfil: " + error.message);
+      alert("❌ Erro ao salvar perfil: " + error.message);
     }
   };
 
@@ -161,27 +183,39 @@ export default function App() {
     });
   };
 
-  // --- FUNÇÕES DE FINANCEIRO (EDITAR / EXCLUIR / RECEBER) ---
-  const handleConfirmPayment = async (app) => {
-    const serv = services.find(s => s.id === app.serviceId);
-    const cli = clients.find(c => c.id === app.clientId);
-    
-    // ========== CORREÇÃO: Adicionar formaPagamento ==========
-    await addDoc(collection(db, "transactions"), {
-      descricao: `Atendimento: ${cli?.nome} (${serv?.nome})`,
-      valor: Number(serv?.preco || 0),
-      tipo: "receita",
-      data: new Date().toISOString(),
-      tenantId: user.uid,
-      appointmentId: app.id,
-      formaPagamento: formaPagamento
-    });
-    await updateDoc(doc(db, "appointments", app.id), { status: "pago" });
-    loadData(); 
-    alert("Pagamento recebido!");
+  // ========== CORREÇÃO 4: Modal de Pagamento com Seleção de Forma ==========
+  const handlePaymentClick = (app) => {
+    setSelectedAppForPayment(app);
+    setFormaPagamento("pix"); // Define Pix como padrão
+    setShowPaymentModal(true);
   };
 
-  // ========== CORREÇÃO: Adicionar formaPagamento ao lançamento ==========
+  const confirmPayment = async () => {
+    if (!selectedAppForPayment) return;
+
+    const serv = services.find(s => s.id === selectedAppForPayment.serviceId);
+    const cli = clients.find(c => c.id === selectedAppForPayment.clientId);
+    
+    try {
+      await addDoc(collection(db, "transactions"), {
+        descricao: `Atendimento: ${cli?.nome} (${serv?.nome})`,
+        valor: Number(serv?.preco || 0),
+        tipo: "receita",
+        data: new Date().toISOString(),
+        tenantId: user.uid,
+        appointmentId: selectedAppForPayment.id,
+        formaPagamento: formaPagamento
+      });
+      await updateDoc(doc(db, "appointments", selectedAppForPayment.id), { status: "pago" });
+      loadData(user.uid);
+      setShowPaymentModal(false);
+      setSelectedAppForPayment(null);
+      alert("✅ Pagamento recebido!");
+    } catch (error) {
+      alert("❌ Erro ao confirmar pagamento: " + error.message);
+    }
+  };
+
   const handleSaveTransaction = async () => {
     const d = { 
       descricao: descFin, 
@@ -191,13 +225,17 @@ export default function App() {
       tenantId: user.uid,
       formaPagamento: formaPagamento
     };
-    if (editId) await updateDoc(doc(db, "transactions", editId), d);
-    else await addDoc(collection(db, "transactions"), d);
-    setEditId(null); 
-    setDescFin(""); 
-    setValorFin(""); 
-    setFormaPagamento("dinheiro");
-    loadData();
+    try {
+      if (editId) await updateDoc(doc(db, "transactions", editId), d);
+      else await addDoc(collection(db, "transactions"), d);
+      setEditId(null); 
+      setDescFin(""); 
+      setValorFin(""); 
+      setFormaPagamento("pix");
+      loadData(user.uid);
+    } catch (error) {
+      alert("❌ Erro ao salvar transação: " + error.message);
+    }
   };
 
   // --- AUXILIARES ---
@@ -206,8 +244,12 @@ export default function App() {
 
   const deleteWithConfirm = async (col, id, nome, extra = "") => {
     if (window.confirm(`Tem certeza que deseja excluir ${nome} ${extra ? `(${extra})` : ""}?`)) {
-      await deleteDoc(doc(db, col, id));
-      loadData();
+      try {
+        await deleteDoc(doc(db, col, id));
+        loadData(user.uid);
+      } catch (error) {
+        alert("❌ Erro ao deletar: " + error.message);
+      }
     }
   };
 
@@ -309,7 +351,7 @@ export default function App() {
                     <span onClick={() => {setSelHora(hora); setEditAppId(null); setSelCliente(""); setClientSearch(""); setShowModal(true);}} style={{color: '#4caf50', cursor:'pointer'}}>+ Disponível</span>
                   )}
                 </div>
-                {isStart && app.status !== "pago" && <button onClick={() => handleConfirmPayment(app)} style={btnPay}>$</button>}
+                {isStart && app.status !== "pago" && <button onClick={() => handlePaymentClick(app)} style={btnPay}>💵</button>}
                 {isStart && <button onClick={() => deleteWithConfirm("appointments", app.id, getNome(clients, app.clientId))} style={btnDel}>X</button>}
               </div>
             );
@@ -333,7 +375,6 @@ export default function App() {
             <input placeholder="Descrição" value={descFin} onChange={e => setDescFin(e.target.value)} style={inputStyle} />
             <input placeholder="Valor R$" type="number" value={valorFin} onChange={e => setValorFin(e.target.value)} style={inputStyle} />
             
-            {/* ========== CORREÇÃO: Seletor de Forma de Pagamento ========== */}
             <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Forma de Pagamento</label>
             <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} style={inputStyle}>
               <option value="dinheiro">💵 Dinheiro</option>
@@ -372,10 +413,15 @@ export default function App() {
             <input placeholder="Nome" value={nomeCliente} onChange={e => setNomeCliente(e.target.value)} style={inputStyle} />
             <input placeholder="Telefone" value={telefone} onChange={e => setTelefone(e.target.value)} style={inputStyle} />
             <button onClick={async () => {
+              if (!nomeCliente.trim()) return alert("Digite o nome do cliente");
               const d = { nome: nomeCliente, telefone, tenantId: user.uid };
-              if(editId) await updateDoc(doc(db, "clients", editId), d);
-              else await addDoc(collection(db, "clients"), d);
-              setEditId(null); setNomeCliente(""); setTelefone(""); loadData();
+              try {
+                if(editId) await updateDoc(doc(db, "clients", editId), d);
+                else await addDoc(collection(db, "clients"), d);
+                setEditId(null); setNomeCliente(""); setTelefone(""); loadData(user.uid);
+              } catch (error) {
+                alert("❌ Erro: " + error.message);
+              }
             }} style={btnStyle}>Salvar Cliente</button>
           </section>
           <input placeholder="🔍 Buscar cliente pelo nome..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={inputStyle} />
@@ -402,10 +448,15 @@ export default function App() {
             <input placeholder="Preço R$" type="number" value={preco} onChange={e => setPreco(e.target.value)} style={inputStyle} />
             <input placeholder="Duração (min)" type="number" value={duracao} onChange={e => setDuracao(e.target.value)} style={inputStyle} />
             <button onClick={async () => {
+              if (!nomeServico.trim() || !preco || !duracao) return alert("Preencha todos os campos");
               const d = { nome: nomeServico, preco: Number(preco), duracao: Number(duracao), tenantId: user.uid };
-              if(editId) await updateDoc(doc(db, "services", editId), d);
-              else await addDoc(collection(db, "services"), d);
-              setEditId(null); setNomeServico(""); setPreco(""); setDuracao(""); loadData();
+              try {
+                if(editId) await updateDoc(doc(db, "services", editId), d);
+                else await addDoc(collection(db, "services"), d);
+                setEditId(null); setNomeServico(""); setPreco(""); setDuracao(""); loadData(user.uid);
+              } catch (error) {
+                alert("❌ Erro: " + error.message);
+              }
             }} style={btnStyle}>Salvar Serviço</button>
           </section>
           {services.map(s => (
@@ -430,7 +481,7 @@ export default function App() {
                     <img src={logoUrl} alt="Logo" style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', marginBottom: '10px' }} />
                   ) : (
                     <div style={{ width: '80px', height: '80px', borderRadius: '50%', backgroundColor: '#eee', margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span style={{ fontSize: '12px', color: '#999' }}>Sem Logo</span>
+                      <span style={{ fontSize: '12px', color: '#999' }}>📷 Sem Logo</span>
                     </div>
                   )}
                   <p style={{ margin: '5px 0' }}><strong>{nomeEmpresa || "Seu Salão"}</strong></p>
@@ -439,7 +490,7 @@ export default function App() {
                     🕐 {horarioAbertura} às {horarioFechamento}
                   </p>
                 </div>
-                <button onClick={() => setEditingProfile(true)} style={{...btnStyle, backgroundColor: '#2196f3'}}>Editar Perfil</button>
+                <button onClick={() => setEditingProfile(true)} style={{...btnStyle, backgroundColor: '#2196f3'}}>✏️ Editar Perfil</button>
               </div>
             ) : (
               <div>
@@ -449,40 +500,45 @@ export default function App() {
                   onChange={e => setNomeEmpresa(e.target.value)} 
                   style={inputStyle} 
                 />
+                
+                <label style={labelStyle}>📷 Logo do Salão (Clique para carregar)</label>
                 <input 
-                  placeholder="URL da Logo (ex: https://...)" 
-                  value={logoUrl} 
-                  onChange={e => setLogoUrl(e.target.value)} 
+                  type="file" 
+                  accept="image/*" 
+                  onChange={handleFileUpload}
+                  disabled={uploadingLogo}
                   style={inputStyle} 
                 />
+                {uploadingLogo && <p style={{fontSize:'12px', color:'#2196f3'}}>⏳ Enviando imagem...</p>}
                 {logoUrl && (
                   <div style={{ textAlign: 'center', marginBottom: '10px' }}>
                     <img src={logoUrl} alt="Preview" style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover' }} />
-                    <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0 0' }}>Preview da Logo</p>
+                    <p style={{ fontSize: '11px', color: '#4caf50', margin: '5px 0 0 0' }}>✅ Preview da Logo</p>
                   </div>
                 )}
+
                 <input 
                   placeholder="Telefone de Contato" 
                   value={telefoneProfissional} 
                   onChange={e => setTelefoneProfissional(e.target.value)} 
                   style={inputStyle} 
                 />
-                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Horário de Abertura</label>
+                <label style={labelStyle}>🕐 Horário de Abertura</label>
                 <input 
                   type="time"
                   value={horarioAbertura} 
                   onChange={e => setHorarioAbertura(e.target.value)} 
                   style={inputStyle} 
                 />
-                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Horário de Fechamento</label>
+                <label style={labelStyle}>🕐 Horário de Fechamento</label>
                 <input 
                   type="time"
                   value={horarioFechamento} 
                   onChange={e => setHorarioFechamento(e.target.value)} 
                   style={inputStyle} 
                 />
-                <button onClick={handleSaveProfile} style={{...btnStyle, backgroundColor: '#4caf50'}}>Salvar Alterações</button>
-                <button onClick={() => setEditingProfile(false)} style={{...btnStyle, backgroundColor: '#ccc', color: '#333', marginTop: '5px'}}>Cancelar</button>
+                <button onClick={handleSaveProfile} style={{...btnStyle, backgroundColor: '#4caf50'}}>💾 Salvar Alterações</button>
+                <button onClick={() => setEditingProfile(false)} style={{...btnStyle, backgroundColor: '#ccc', color: '#333', marginTop: '5px'}}>❌ Cancelar</button>
               </div>
             )}
           </section>
@@ -514,11 +570,40 @@ export default function App() {
               if(!selCliente || !selServico) return alert("Selecione Cliente e Serviço!");
               const dFinal = new Date(selectedDate); dFinal.setHours(selHora, 0, 0, 0);
               const d = { clientId: selCliente, serviceId: selServico, dataHora: dFinal.toISOString(), status: "pendente", tenantId: user.uid };
-              if(editAppId) await updateDoc(doc(db, "appointments", editAppId), d);
-              else await addDoc(collection(db, "appointments"), d);
-              setShowModal(false); loadData();
-            }} style={btnStyle}>Confirmar</button>
-            <button onClick={() => setShowModal(false)} style={{...btnStyle, backgroundColor:'#ccc', marginTop:'5px'}}>Sair</button>
+              try {
+                if(editAppId) await updateDoc(doc(db, "appointments", editAppId), d);
+                else await addDoc(collection(db, "appointments"), d);
+                setShowModal(false); loadData(user.uid);
+              } catch (error) {
+                alert("❌ Erro: " + error.message);
+              }
+            }} style={btnStyle}>✅ Confirmar</button>
+            <button onClick={() => setShowModal(false)} style={{...btnStyle, backgroundColor:'#ccc', marginTop:'5px'}}>❌ Sair</button>
+          </div>
+        </div>
+      )}
+
+      {/* ========== MODAL DE PAGAMENTO COM SELEÇÃO DE FORMA ========== */}
+      {showPaymentModal && selectedAppForPayment && (
+        <div style={modalOverlay}>
+          <div style={modalContent}>
+            <h3>💳 Confirmar Pagamento</h3>
+            <div style={{textAlign:'center', marginBottom:'15px'}}>
+              <p style={{margin:'5px 0'}}><strong>{getNome(clients, selectedAppForPayment.clientId)}</strong></p>
+              <p style={{margin:'5px 0', fontSize:'12px', color:'#666'}}>
+                {getNome(services, selectedAppForPayment.serviceId)} - R${services.find(s => s.id === selectedAppForPayment.serviceId)?.preco || 0}
+              </p>
+            </div>
+            
+            <label style={labelStyle}>Forma de Pagamento</label>
+            <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} style={inputStyle}>
+              <option value="dinheiro">💵 Dinheiro</option>
+              <option value="cartao">💳 Cartão</option>
+              <option value="pix">📲 Pix</option>
+            </select>
+
+            <button onClick={confirmPayment} style={{...btnStyle, backgroundColor: '#4caf50'}}>✅ Receber Pagamento</button>
+            <button onClick={() => setShowPaymentModal(false)} style={{...btnStyle, backgroundColor: '#ccc', color: '#333', marginTop: '5px'}}>❌ Cancelar</button>
           </div>
         </div>
       )}
@@ -541,6 +626,7 @@ const calcTotal = (list, p) => {
 const btnTab = (active) => ({ flex: 1, padding: '10px', backgroundColor: active ? '#d81b60' : '#eee', color: active ? 'white' : 'black', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '11px', fontWeight: active ? 'bold' : 'normal' });
 const btnMini = { padding: '5px 15px', backgroundColor: '#eee', border: 'none', borderRadius: '5px', cursor: 'pointer' };
 const inputStyle = { width: '100%', padding: '10px', marginBottom: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' };
+const labelStyle = { fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' };
 const btnStyle = { width: '100%', padding: '12px', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', backgroundColor: '#d81b60' };
 const itemStyle = { display: 'flex', alignItems: 'center', padding: '10px', borderBottom: '1px solid #eee', fontSize: '13px', backgroundColor: '#fff' };
 const cardStyle = { padding: '15px', borderRadius: '10px', marginBottom: '15px', border: '1px solid #eee', backgroundColor: '#fff' };
@@ -548,7 +634,7 @@ const modalOverlay = { position: 'fixed', top: 0, left: 0, width: '100%', height
 const modalContent = { backgroundColor: '#fff', padding: '20px', borderRadius: '15px', width: '90%', maxWidth: '350px' };
 const dropdownStyle = { position: 'absolute', top: '45px', left: 0, width: '100%', backgroundColor: '#fff', border: '1px solid #ccc', zIndex: 10, maxHeight: '100px', overflowY: 'auto' };
 const dropdownItem = { padding: '8px', cursor: 'pointer', borderBottom: '1px solid #eee' };
-const btnPay = { backgroundColor: '#4caf50', color: '#fff', border: 'none', borderRadius: '5px', padding: '5px 10px', marginLeft: '5px', cursor: 'pointer' };
+const btnPay = { backgroundColor: '#4caf50', color: '#fff', border: 'none', borderRadius: '5px', padding: '5px 10px', marginLeft: '5px', cursor: 'pointer', fontSize: '14px' };
 const btnDel = { backgroundColor: '#ffcdd2', color: '#c62828', border: 'none', borderRadius: '5px', padding: '5px 10px', marginLeft: '5px', cursor: 'pointer' };
 const btnEdit = { backgroundColor: '#e1f5fe', color: '#0277bd', border: 'none', borderRadius: '5px', padding: '5px 10px', cursor: 'pointer' };
 const btnLetter = (active) => ({ padding: '3px', minWidth: '22px', fontSize: '10px', backgroundColor: active ? '#d81b60' : '#f0f0f0', color: active ? 'white' : '#333', border: '1px solid #ddd', borderRadius: '3px', cursor: 'pointer' });
