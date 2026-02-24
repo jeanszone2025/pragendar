@@ -5,7 +5,7 @@ import { db, auth } from "./firebase";
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [authTab, setAuthTab] = useState("login"); // 'login' ou 'cadastro'
+  const [authTab, setAuthTab] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [tab, setTab] = useState("agenda");
@@ -13,6 +13,7 @@ export default function App() {
   const [services, setServices] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [profile, setProfile] = useState(null);
 
   // --- ESTADOS DE INTERFACE E CALENDÁRIO ---
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -41,16 +42,27 @@ export default function App() {
   const [valorFin, setValorFin] = useState("");
   const [tipoFin, setTipoFin] = useState("receita");
 
-  // ========== INSERÇÃO 1: MONITORAMENTO DE AUTENTICAÇÃO ==========
+  // --- ESTADOS DO PERFIL ---
+  const [nomeEmpresa, setNomeEmpresa] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [telefoneProfissional, setTelefoneProfissional] = useState("");
+  const [horarioAbertura, setHorarioAbertura] = useState("09:00");
+  const [horarioFechamento, setHorarioFechamento] = useState("19:00");
+  const [editingProfile, setEditingProfile] = useState(false);
+
+  // ========== MONITORAMENTO DE AUTENTICAÇÃO ==========
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (loggedUser) => {
       setUser(loggedUser);
-      if (loggedUser) loadData();
+      if (loggedUser) {
+        loadData();
+        loadProfile();
+      }
     });
     return unsub;
   }, []);
 
-  // ========== INSERÇÃO 2: FUNÇÃO DE AUTENTICAÇÃO ==========
+  // ========== FUNÇÃO DE AUTENTICAÇÃO ==========
   const handleAuth = async (e) => {
     e.preventDefault();
     try {
@@ -78,6 +90,49 @@ export default function App() {
       setTransactions(qT.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (error) { console.error("Erro ao carregar dados:", error); }
   }
+
+  // ========== FUNÇÕES DO PERFIL ==========
+  async function loadProfile() {
+    try {
+      if (!user) return;
+      const qP = await getDocs(query(collection(db, "profiles"), where("userId", "==", user.uid)));
+      if (!qP.empty) {
+        const profileData = qP.docs[0].data();
+        setProfile({ id: qP.docs[0].id, ...profileData });
+        setNomeEmpresa(profileData.nomeEmpresa || "");
+        setLogoUrl(profileData.logoUrl || "");
+        setTelefoneProfissional(profileData.telefoneProfissional || "");
+        setHorarioAbertura(profileData.horarioAbertura || "09:00");
+        setHorarioFechamento(profileData.horarioFechamento || "19:00");
+      }
+    } catch (error) { console.error("Erro ao carregar perfil:", error); }
+  }
+
+  const handleSaveProfile = async () => {
+    try {
+      if (!user) return;
+      const profileData = {
+        userId: user.uid,
+        nomeEmpresa,
+        logoUrl,
+        telefoneProfissional,
+        horarioAbertura,
+        horarioFechamento,
+        updatedAt: new Date().toISOString()
+      };
+
+      if (profile) {
+        await updateDoc(doc(db, "profiles", profile.id), profileData);
+      } else {
+        await addDoc(collection(db, "profiles"), profileData);
+      }
+      setEditingProfile(false);
+      loadProfile();
+      alert("Perfil salvo com sucesso!");
+    } catch (error) {
+      alert("Erro ao salvar perfil: " + error.message);
+    }
+  };
 
   // --- LÓGICA DE BLOQUEIO DE HORÁRIOS (JANELA DE OCUPAÇÃO) ---
   const getAppDoHorario = (hora) => {
@@ -128,7 +183,7 @@ export default function App() {
     }
   };
 
-  // ========== INSERÇÃO 3: RENDERIZAÇÃO CONDICIONAL - TELA DE LOGIN ==========
+  // ========== RENDERIZAÇÃO CONDICIONAL - TELA DE LOGIN ==========
   if (!user) {
     return (
       <div style={{ padding: '40px 20px', fontFamily: 'sans-serif', textAlign: 'center', minHeight: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', backgroundColor: '#fafafa' }}>
@@ -166,9 +221,14 @@ export default function App() {
 
   return (
     <div style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '500px', margin: 'auto' }}>
-      {/* ========== INSERÇÃO 4: HEADER COM BOTÃO DE SAIR ========== */}
+      {/* HEADER COM LOGO E BOTÃO DE SAIR */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-        <h1 style={{ color: '#d81b60', margin: 0 }}>Pragendar R$</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {logoUrl && <img src={logoUrl} alt="Logo" style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} />}
+          <div>
+            <h1 style={{ color: '#d81b60', margin: 0, fontSize: '18px' }}>{nomeEmpresa || "Pragendar R$"}</h1>
+          </div>
+        </div>
         <button onClick={() => signOut(auth)} style={{ padding: '8px 15px', backgroundColor: '#f44336', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
           Sair
         </button>
@@ -180,6 +240,7 @@ export default function App() {
         <button onClick={() => setTab("financeiro")} style={btnTab(tab === "financeiro")}>Financeiro</button>
         <button onClick={() => setTab("clientes")} style={btnTab(tab === "clientes")}>Clientes</button>
         <button onClick={() => setTab("servicos")} style={btnTab(tab === "servicos")}>Serviços</button>
+        <button onClick={() => setTab("perfil")} style={btnTab(tab === "perfil")}>Perfil</button>
       </div>
 
       {/* ABA AGENDA COM CALENDÁRIO E TIMELINE */}
@@ -257,7 +318,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ABA CLIENTES (BUSCA A-Z E CSV) */}
+      {/* ABA CLIENTES (BUSCA A-Z) */}
       {tab === "clientes" && (
         <div>
           <section style={cardStyle}>
@@ -308,6 +369,71 @@ export default function App() {
               <button onClick={() => deleteWithConfirm("services", s.id, s.nome)} style={btnDel}>🗑️</button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ABA PERFIL (NOVO) */}
+      {tab === "perfil" && (
+        <div>
+          <section style={cardStyle}>
+            <h3>Perfil da Profissional</h3>
+            {!editingProfile ? (
+              <div>
+                <div style={{ marginBottom: '15px', textAlign: 'center' }}>
+                  {logoUrl ? (
+                    <img src={logoUrl} alt="Logo" style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', marginBottom: '10px' }} />
+                  ) : (
+                    <div style={{ width: '80px', height: '80px', borderRadius: '50%', backgroundColor: '#eee', margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '12px', color: '#999' }}>Sem Logo</span>
+                    </div>
+                  )}
+                  <p style={{ margin: '5px 0' }}><strong>{nomeEmpresa || "Seu Salão"}</strong></p>
+                  <p style={{ margin: '5px 0', fontSize: '12px', color: '#666' }}>{telefoneProfissional || "Telefone não definido"}</p>
+                  <p style={{ margin: '5px 0', fontSize: '12px', color: '#666' }}>
+                    {horarioAbertura} às {horarioFechamento}
+                  </p>
+                </div>
+                <button onClick={() => setEditingProfile(true)} style={{...btnStyle, backgroundColor: '#2196f3'}}>Editar Perfil</button>
+              </div>
+            ) : (
+              <div>
+                <input 
+                  placeholder="Nome da Empresa/Salão" 
+                  value={nomeEmpresa} 
+                  onChange={e => setNomeEmpresa(e.target.value)} 
+                  style={inputStyle} 
+                />
+                <input 
+                  placeholder="URL da Logo" 
+                  value={logoUrl} 
+                  onChange={e => setLogoUrl(e.target.value)} 
+                  style={inputStyle} 
+                />
+                <input 
+                  placeholder="Telefone de Contato" 
+                  value={telefoneProfissional} 
+                  onChange={e => setTelefoneProfissional(e.target.value)} 
+                  style={inputStyle} 
+                />
+                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Horário de Abertura</label>
+                <input 
+                  type="time"
+                  value={horarioAbertura} 
+                  onChange={e => setHorarioAbertura(e.target.value)} 
+                  style={inputStyle} 
+                />
+                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Horário de Fechamento</label>
+                <input 
+                  type="time"
+                  value={horarioFechamento} 
+                  onChange={e => setHorarioFechamento(e.target.value)} 
+                  style={inputStyle} 
+                />
+                <button onClick={handleSaveProfile} style={{...btnStyle, backgroundColor: '#4caf50'}}>Salvar Alterações</button>
+                <button onClick={() => setEditingProfile(false)} style={{...btnStyle, backgroundColor: '#ccc', color: '#333', marginTop: '5px'}}>Cancelar</button>
+              </div>
+            )}
+          </section>
         </div>
       )}
 
