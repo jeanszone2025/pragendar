@@ -9,28 +9,33 @@ export default function App() {
   const [appointments, setAppointments] = useState([]);
   const [transactions, setTransactions] = useState([]);
 
+  // Estados de Calendário
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMonth, setViewMonth] = useState(new Date().getMonth());
   const [viewYear, setViewYear] = useState(new Date().getFullYear());
 
+  // Estados de Busca e Filtro (Clientes)
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedLetter, setSelectedLetter] = useState("");
   const alfabeto = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
+  // Estados de Modal e Edição
   const [showModal, setShowModal] = useState(false);
   const [editAppId, setEditAppId] = useState(null);
   const [selCliente, setSelCliente] = useState("");
   const [clientSearch, setClientSearch] = useState("");
   const [selServico, setSelServico] = useState("");
   const [selHora, setSelHora] = useState("");
-  const [editId, setEditId] = useState(null);
 
+  // Estados de Cadastro
+  const [editId, setEditId] = useState(null);
   const [nomeCliente, setNomeCliente] = useState("");
   const [telefone, setTelefone] = useState("");
   const [nomeServico, setNomeServico] = useState("");
   const [preco, setPreco] = useState("");
   const [duracao, setDuracao] = useState("");
 
+  // Estados Financeiros
   const [descFin, setDescFin] = useState("");
   const [valorFin, setValorFin] = useState("");
   const [tipoFin, setTipoFin] = useState("receita");
@@ -45,7 +50,7 @@ export default function App() {
       setAppointments(qA.docs.map(d => ({ id: d.id, ...d.data() })));
       const qT = await getDocs(collection(db, "transactions"));
       setTransactions(qT.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch (error) { console.error("Erro ao carregar:", error); }
+    } catch (e) { console.error(e); }
   }
 
   useEffect(() => { loadData(); }, []);
@@ -53,48 +58,31 @@ export default function App() {
   // --- LÓGICA DE BLOQUEIO POR DURAÇÃO ---
   const getAppDoHorario = (hora) => {
     const dSel = new Date(selectedDate);
-    
     return appointments.find(a => {
       const inicio = new Date(a.dataHora);
-      // Busca a duração do serviço deste agendamento
-      const servico = services.find(s => s.id === a.serviceId);
-      const duracaoMin = servico ? Number(servico.duracao) : 60;
+      const serv = services.find(s => s.id === a.serviceId);
+      const dur = serv ? Number(serv.duracao) : 60;
+      const fim = new Date(inicio.getTime() + dur * 60000);
       
-      const fim = new Date(inicio.getTime() + duracaoMin * 60000);
-
-      // Verifica se a data é a mesma
-      const mesmaData = inicio.getDate() === dSel.getDate() && 
-                        inicio.getMonth() === dSel.getMonth() && 
-                        inicio.getFullYear() === dSel.getFullYear();
-
+      const mesmaData = inicio.getDate() === dSel.getDate() && inicio.getMonth() === dSel.getMonth() && inicio.getFullYear() === dSel.getFullYear();
       if (!mesmaData) return false;
 
-      // REGRA: O horário da agenda (ex: 9:00) está entre o Início e o Fim do serviço?
       const horaAgenda = hora;
       const horaInicio = inicio.getHours();
-      // O "+ 0.1" é para garantir que se terminar as 10:00, o slot das 10:00 fique livre
-      const horaFim = inicio.getHours() + (inicio.getMinutes() + duracaoMin) / 60;
-
+      const horaFim = inicio.getHours() + (inicio.getMinutes() + dur) / 60;
       return horaAgenda >= horaInicio && horaAgenda < Math.ceil(horaFim);
     });
   };
 
-  // --- RESTANTE DAS FUNÇÕES (FINANCEIRO / CLIENTES / CSV) ---
+  // --- FINANCEIRO ---
   const handleConfirmPayment = async (app) => {
-    const servico = services.find(s => s.id === app.serviceId);
-    const cliente = clients.find(c => c.id === app.clientId);
-    try {
-      await addDoc(collection(db, "transactions"), {
-        descricao: `Serviço: ${servico?.nome} - ${cliente?.nome}`,
-        valor: servico?.preco || 0,
-        tipo: "receita",
-        data: new Date().toISOString(),
-        tenantId: "CRIS",
-        createdAt: serverTimestamp()
-      });
-      await updateDoc(doc(db, "appointments", app.id), { status: "pago" });
-      alert("R$ Recebido!"); loadData();
-    } catch (e) { console.error(e); }
+    const serv = services.find(s => s.id === app.serviceId);
+    const cli = clients.find(c => c.id === app.clientId);
+    await addDoc(collection(db, "transactions"), {
+      descricao: `Atendimento: ${cli?.nome}`, valor: serv?.preco || 0, tipo: "receita", data: new Date().toISOString(), tenantId: "CRIS", createdAt: serverTimestamp()
+    });
+    await updateDoc(doc(db, "appointments", app.id), { status: "pago" });
+    loadData(); alert("Pago!");
   };
 
   const calcTotal = (tipo, periodo) => {
@@ -107,24 +95,16 @@ export default function App() {
     }).reduce((acc, curr) => acc + curr.valor, 0);
   };
 
-  const handleImportCSV = (e) => {
-    const file = e.target.files[0];
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const batch = writeBatch(db);
-      event.target.result.split("\n").slice(1).forEach(line => {
-        const col = line.split(",");
-        if(col[0]) batch.set(doc(collection(db, "clients")), { nome: col[0].trim(), telefone: col[1]?.trim(), tenantId: "CRIS", createdAt: serverTimestamp() });
-      });
-      await batch.commit(); loadData();
-    };
-    reader.readAsText(file);
-  };
+  // --- CLIENTES FILTRADOS ---
+  const clientesFiltrados = clients
+    .filter(c => c.nome?.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter(c => selectedLetter === "" || c.nome?.toUpperCase().startsWith(selectedLetter))
+    .sort((a, b) => a.nome?.localeCompare(b.nome));
 
   const getNome = (list, id) => list.find(i => i.id === id)?.nome || "---";
 
   return (
-    <div style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '500px', margin: 'auto' }}>
+    <div style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '500px', margin: 'auto', backgroundColor: '#fdfdfd' }}>
       <h1 style={{ color: '#d81b60', textAlign: 'center' }}>Pragendar R$</h1>
       
       <div style={{ display: 'flex', gap: '5px', marginBottom: '15px', overflowX: 'auto' }}>
@@ -141,35 +121,31 @@ export default function App() {
             <strong>{viewYear} - {viewMonth + 1}</strong>
             <button onClick={() => setViewMonth(v => v + 1)} style={btnMini}>{">"}</button>
           </div>
-
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '5px', marginBottom: '15px' }}>
             {Array.from({ length: new Date(viewYear, viewMonth + 1, 0).getDate() }, (_, i) => i + 1).map(dia => (
               <div key={dia} onClick={() => setSelectedDate(new Date(viewYear, viewMonth, dia))}
                 style={{ padding: '8px 0', textAlign: 'center', borderRadius: '5px', cursor: 'pointer', border: '1px solid #eee',
                 backgroundColor: selectedDate.getDate() === dia && selectedDate.getMonth() === viewMonth ? '#d81b60' : '#fff',
-                color: selectedDate.getDate() === dia && selectedDate.getMonth() === viewMonth ? '#fff' : '#333' }}>
-                {dia}
-              </div>
+                color: selectedDate.getDate() === dia && selectedDate.getMonth() === viewMonth ? '#fff' : '#333' }}>{dia}</div>
             ))}
           </div>
-
-          <h3>Dia {selectedDate.toLocaleDateString('pt-BR')}</h3>
+          <h3>{selectedDate.toLocaleDateString('pt-BR')}</h3>
           {Array.from({ length: 13 }, (_, i) => i + 8).map(hora => {
             const app = getAppDoHorario(hora);
             const isStart = app && new Date(app.dataHora).getHours() === hora;
             return (
               <div key={hora} style={{ ...itemStyle, borderLeft: app?.status === 'pago' ? '5px solid #4caf50' : (app ? '5px solid #ff9800' : '1px solid #eee') }}>
-                <div style={{ width: '50px', fontWeight: 'bold' }}>{hora}:00</div>
+                <div style={{ width: '45px', fontWeight: 'bold' }}>{hora}:00</div>
                 <div style={{ flex: 1 }}>
                   {app ? (
-                    <div style={{ opacity: isStart ? 1 : 0.6 }}>
-                      <strong>{getNome(clients, app.clientId)}</strong> {isStart ? `- ${getNome(services, app.serviceId)}` : '(Ocupado)'}
+                    <div onClick={() => { setSelHora(hora); setEditAppId(app.id); setSelCliente(app.clientId); setSelServico(app.serviceId); setClientSearch(getNome(clients, app.clientId)); setShowModal(true); }} style={{cursor:'pointer'}}>
+                       <strong>{getNome(clients, app.clientId)}</strong> {isStart && `- ${getNome(services, app.serviceId)}`}
                     </div>
                   ) : (
                     <span onClick={() => {setSelHora(hora); setEditAppId(null); setSelCliente(""); setClientSearch(""); setShowModal(true);}} style={{color: '#4caf50', cursor:'pointer'}}>+ Disponível</span>
                   )}
                 </div>
-                {isStart && app.status !== "pago" && <button onClick={() => handleConfirmPayment(app)} style={btnPay}>R$</button>}
+                {isStart && app.status !== "pago" && <button onClick={() => handleConfirmPayment(app)} style={btnPay}>$</button>}
                 {isStart && <button onClick={() => {if(window.confirm("Excluir?")) deleteDoc(doc(db, "appointments", app.id)).then(loadData)}} style={btnDel}>X</button>}
               </div>
             );
@@ -184,20 +160,32 @@ export default function App() {
             <div style={{ ...cardStyle, backgroundColor: '#f3e5f5' }}>Mês: <strong>R$ {calcTotal("receita", "mes")}</strong></div>
           </div>
           <section style={cardStyle}>
-            <h3>Lançamento</h3>
-            <input placeholder="Descrição" value={descFin} onChange={e => setDescFin(e.target.value)} style={inputStyle} />
+            <h3>Entradas/Saídas Manuais</h3>
+            <input placeholder="O que é? (ex: Compra Esmalte)" value={descFin} onChange={e => setDescFin(e.target.value)} style={inputStyle} />
             <input placeholder="Valor" type="number" value={valorFin} onChange={e => setValorFin(e.target.value)} style={inputStyle} />
+            <select value={tipoFin} onChange={e => setTipoFin(e.target.value)} style={inputStyle}>
+              <option value="receita">Entrada</option>
+              <option value="despesa">Saída</option>
+            </select>
             <button onClick={async () => {
               await addDoc(collection(db, "transactions"), { descricao: descFin, valor: Number(valorFin), tipo: tipoFin, data: new Date().toISOString(), tenantId: "CRIS" });
               setDescFin(""); setValorFin(""); loadData();
             }} style={btnStyle}>Gravar</button>
           </section>
+          <h3>Extrato de Hoje</h3>
+          {transactions.filter(t => new Date(t.data).toLocaleDateString() === new Date().toLocaleDateString()).map(t => (
+            <div key={t.id} style={itemStyle}>
+              <small>{new Date(t.data).toLocaleTimeString().slice(0,5)} - {t.descricao}</small>
+              <strong style={{color: t.tipo === 'receita' ? 'green' : 'red'}}>{t.tipo==='receita'?'+':'-'} R$ {t.valor}</strong>
+            </div>
+          ))}
         </div>
       )}
 
       {tab === "clientes" && (
         <div>
           <section style={cardStyle}>
+            <h3>{editId ? "Editar" : "Nova"} Cliente</h3>
             <input placeholder="Nome" value={nomeCliente} onChange={e => setNomeCliente(e.target.value)} style={inputStyle} />
             <input placeholder="Telefone" value={telefone} onChange={e => setTelefone(e.target.value)} style={inputStyle} />
             <button onClick={async () => {
@@ -205,11 +193,12 @@ export default function App() {
               if(editId) await updateDoc(doc(db, "clients", editId), d);
               else await addDoc(collection(db, "clients"), d);
               setEditId(null); setNomeCliente(""); setTelefone(""); loadData();
-            }} style={btnStyle}>Salvar</button>
+            }} style={btnStyle}>Salvar Cliente</button>
           </section>
           <input placeholder="🔍 Buscar..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={inputStyle} />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', marginBottom: '10px' }}>
             {alfabeto.map(l => <button key={l} onClick={() => setSelectedLetter(l)} style={btnLetter(selectedLetter === l)}>{l}</button>)}
+            <button onClick={() => setSelectedLetter("")} style={btnLetter(selectedLetter === "")}>Tudo</button>
           </div>
           {clientesFiltrados.map(c => (
             <div key={c.id} style={itemStyle}>
@@ -232,7 +221,7 @@ export default function App() {
             <button onClick={async () => {
               await addDoc(collection(db, "services"), { nome: nomeServico, preco: Number(preco), duracao: Number(duracao), tenantId: "CRIS" });
               setNomeServico(""); setPreco(""); setDuracao(""); loadData();
-            }} style={btnStyle}>Salvar Serviço</button>
+            }} style={btnStyle}>Cadastrar Serviço</button>
           </section>
           {services.map(s => <div key={s.id} style={itemStyle}>{s.nome} - R${s.preco} ({s.duracao}min)</div>)}
         </div>
@@ -251,12 +240,15 @@ export default function App() {
               </div>
             )}
             <select value={selServico} onChange={e => setSelServico(e.target.value)} style={inputStyle}>
-              <option value="">Serviço</option>
+              <option value="">Selecione o Serviço</option>
               {services.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
             </select>
             <button onClick={async () => {
+              if(!selCliente || !selServico) return alert("Erro: Selecione a cliente e o serviço!");
               const dFinal = new Date(selectedDate); dFinal.setHours(selHora, 0, 0, 0);
-              await addDoc(collection(db, "appointments"), { clientId: selCliente, serviceId: selServico, dataHora: dFinal.toISOString(), status: "pendente", tenantId: "CRIS" });
+              const data = { clientId: selCliente, serviceId: selServico, dataHora: dFinal.toISOString(), status: "pendente", tenantId: "CRIS" };
+              if(editAppId) await updateDoc(doc(db, "appointments", editAppId), data);
+              else await addDoc(collection(db, "appointments"), data);
               setShowModal(false); loadData();
             }} style={btnStyle}>Confirmar</button>
             <button onClick={() => setShowModal(false)} style={{...btnStyle, backgroundColor:'#ccc', marginTop:'5px'}}>Sair</button>
@@ -272,7 +264,7 @@ const btnTab = (active) => ({ flex: 1, padding: '10px', backgroundColor: active 
 const btnMini = { padding: '5px 15px', backgroundColor: '#eee', border: 'none', borderRadius: '5px', cursor: 'pointer' };
 const inputStyle = { width: '100%', padding: '10px', marginBottom: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' };
 const btnStyle = { width: '100%', padding: '12px', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', backgroundColor: '#d81b60' };
-const itemStyle = { display: 'flex', alignItems: 'center', padding: '10px', borderBottom: '1px solid #eee', fontSize: '13px' };
+const itemStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', borderBottom: '1px solid #eee', fontSize: '13px' };
 const cardStyle = { padding: '15px', borderRadius: '10px', marginBottom: '15px', border: '1px solid #eee' };
 const modalOverlay = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 };
 const modalContent = { backgroundColor: '#fff', padding: '20px', borderRadius: '15px', width: '90%', maxWidth: '350px' };
