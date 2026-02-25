@@ -169,7 +169,7 @@ export default function App() {
     }
   };
 
-  // ========== IMPORTAÇÃO CSV ROBUSTA (RESOLVIDO: TELEFONE E NOMES) ✨ ==========
+ // ========== IMPORTAÇÃO CSV UNIFICADA (NOME COMPLETO + TELEFONE GARANTIDO) ✨ ==========
   const handleCSVImport = async (e) => {
     const file = e.target.files[0];
     if (!file || !user) return;
@@ -181,10 +181,10 @@ export default function App() {
       try {
         let content = event.target.result;
         
-        // 1. Remove lixo invisível (BOM)
+        // 1. Remove o caractere invisível (BOM) que o Excel coloca
         if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
 
-        // 2. Normaliza quebras de linha
+        // 2. Normaliza quebras de linha e limpa linhas vazias
         const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
                              .map(l => l.trim()).filter(l => l.length > 0);
         
@@ -192,38 +192,34 @@ export default function App() {
         let batch = writeBatch(db);
         let batchCount = 0;
 
-        // 3. Processa cada linha (pula o cabeçalho i=1)
+        // 3. Processa cada linha (pula o cabeçalho i=0)
         for (let i = 1; i < lines.length; i++) {
           try {
-            // Divide por vírgula ou ponto e vírgula
+            // Divide a linha considerando vírgula ou ponto e vírgula
             const parts = lines[i].split(/[;,]/).map(item => item?.trim());
 
             if (parts.length > 0) {
-              let nomeFinal = "";
-              let foneFinal = "";
+              // --- LÓGICA DO NOME COMPLETO ---
+              // Junta: Nome + Nome do Meio + Sobrenome (Colunas 0, 1 e 2)
+              const nomeCompleto = [parts[0], parts[1], parts[2]]
+                .filter(Boolean) // Remove campos vazios
+                .join(" ");      // Junta com espaço
 
-              // VERIFICAÇÃO DE FORMATO:
-              // Se o arquivo tiver muitas colunas (como o seu), mapeia os campos certos
-              if (parts.length > 3) {
-                // Une: Primeiro Nome + Nome do Meio + Sobrenome
-                nomeFinal = [parts[0], parts[1], parts[2]].filter(Boolean).join(" ");
-                // Pega Celular (coluna 3) ou Telefone Residencial (coluna 4)
-                foneFinal = parts[3] || parts[4] || "";
-              } else {
-                // Caso seja um CSV simples (Nome, Telefone)
-                nomeFinal = parts[0];
-                foneFinal = parts[1] || "";
-              }
+              // --- LÓGICA DO TELEFONE ---
+              // Tenta pegar o celular (coluna 3), se estiver vazio tenta o residencial (coluna 4)
+              let telefoneFinal = parts[3] || parts[4] || "";
 
-              // Limpa caracteres invisíveis que o Excel/Google às vezes coloca no fim do número
-              foneFinal = foneFinal.replace(/[^\d+() -]/g, "");
+              // Limpa o telefone: remove espaços extras e caracteres invisíveis (como o \u3164)
+              // Mantém apenas números, o sinal de + e parênteses
+              telefoneFinal = telefoneFinal.replace(/[^\d+() -]/g, "");
 
-              // Só adiciona se tiver nome e o que parece ser um telefone
-              if (nomeFinal && nomeFinal !== "First Name") {
+              // --- VALIDAÇÃO E GRAVAÇÃO ---
+              // Só grava se houver um nome válido e ignora a linha se for o cabeçalho
+              if (nomeCompleto && nomeCompleto !== "First Name Middle Name Last Name") {
                 const newRef = doc(collection(db, "clients"));
                 batch.set(newRef, {
-                  nome: nomeFinal,
-                  telefone: foneFinal,
+                  nome: nomeCompleto,
+                  telefone: telefoneFinal,
                   tenantId: user.uid,
                   createdAt: serverTimestamp()
                 });
@@ -231,7 +227,7 @@ export default function App() {
                 batchCount++;
                 totalCount++;
 
-                // Respeita o limite de 500 do Firebase
+                // Limite de 500 do Firebase para cada lote
                 if (batchCount === 500) {
                   await batch.commit();
                   batch = writeBatch(db);
@@ -244,10 +240,13 @@ export default function App() {
           }
         }
 
-        if (batchCount > 0) await batch.commit();
+        // Envia o que sobrou no último lote
+        if (batchCount > 0) {
+          await batch.commit();
+        }
 
         loadData(user.uid);
-        alert(`✅ ${totalCount} contatos importados com sucesso!`);
+        alert(`✅ Sucesso! ${totalCount} contatos importados com nomes completos.`);
 
       } catch (error) {
         alert("❌ Erro ao processar arquivo: " + error.message);
@@ -257,6 +256,7 @@ export default function App() {
       }
     };
 
+    // Lê como UTF-8 para não estragar emojis nem acentos
     reader.readAsText(file, 'UTF-8');
   };
 
