@@ -71,7 +71,15 @@ export default function App() {
   const [fidelidadeLimit, setFidelidadeLimit] = useState(10);
   const [editingProfile, setEditingProfile] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
-
+  const [gradeHorarios, setGradeHorarios] = useState({
+    0: { aberta: false, tipo: 'janela' }, // Domingo
+    1: { aberta: false, tipo: 'janela' }, // Segunda
+    2: { aberta: true, tipo: 'janela' },  // Terça
+    3: { aberta: true, tipo: 'janela' },  // Quarta
+    4: { aberta: true, tipo: 'janela' },  // Quinta
+    5: { aberta: true, tipo: 'janela' },  // Sexta
+    6: { aberta: true, tipo: 'fixo', horas: [7, 9] } // Sábado (exemplo solicitado)
+  });
   // ========== ESTADOS CSV E ESTOQUE ==========
   const [importingCSV, setImportingCSV] = useState(false);
   const [nomeProduto, setNomeProduto] = useState("");
@@ -86,6 +94,12 @@ export default function App() {
       if (loggedUser) {
         loadData(loggedUser.uid);
         loadProfile(loggedUser.uid);
+        // Dentro do if (docSnap.exists()), adicione:
+setGradeHorarios(data.gradeHorarios || {
+  0: { aberta: false }, 1: { aberta: false }, 2: { aberta: true }, 
+  3: { aberta: true }, 4: { aberta: true }, 5: { aberta: true }, 
+  6: { aberta: true, tipo: 'fixo', horas: [7, 9] }
+});
       }
     });
     return unsub;
@@ -132,10 +146,10 @@ export default function App() {
   }
 
   // ========== CARREGAR PERFIL ==========
+  // ========== CARREGAR PERFIL (CORRIGIDO) ==========
   async function loadProfile(uid) {
     try {
       if (!uid) return;
-
       const docRef = doc(db, "profiles", uid);
       const docSnap = await getDoc(docRef);
 
@@ -148,11 +162,35 @@ export default function App() {
         setHorarioAbertura(data.horarioAbertura || "09:00");
         setHorarioFechamento(data.horarioFechamento || "19:00");
         setFidelidadeLimit(data.fidelidadeLimit || 10);
+        // Carrega a configuração de dias da Cris
+        setGradeHorarios(data.gradeHorarios || { 
+          0:{aberta:false}, 1:{aberta:false}, 2:{aberta:true}, 
+          3:{aberta:true}, 4:{aberta:true}, 5:{aberta:true}, 
+          6:{aberta:true, tipo:'fixo', horas:[7,9]} 
+        });
       }
     } catch (error) { 
       console.error("Erro ao carregar perfil:", error); 
     }
-  }
+  } // <--- FECHAMENTO CORRETO AQUI
+
+  // ========== UPLOAD DE LOGO (REVISADO) ==========
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !user) return;
+    setUploadingLogo(true);
+    try {
+      const storageRef = ref(storage, `logos/${user.uid}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(snapshot.ref);
+      setLogoUrl(url);
+      alert("✅ Imagem carregada!");
+    } catch (error) {
+      alert("❌ Erro: " + error.message);
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
 
   // ========== UPLOAD DE LOGO ==========
   const handleFileUpload = async (e) => {
@@ -277,6 +315,7 @@ export default function App() {
         horarioAbertura,
         horarioFechamento,
         fidelidadeLimit,
+        gradeHorarios,
         updatedAt: new Date().toISOString()
       }, { merge: true });
 
@@ -323,7 +362,7 @@ export default function App() {
   const getClientHistory = (clientId) => {
     const clientApps = appointments.filter(a => a.clientId === clientId);
     const appIds = clientApps.map(a => a.id);
-    // Busca transações que estejam ligadas aos agendamentos deste cliente
+    // Agora busca todas as transações que tenham o ID de agendamentos deste cliente
     const clientTransactions = transactions.filter(t => appIds.includes(t.appointmentId));
     
     const totalGasto = clientTransactions.reduce((acc, t) => acc + (t.tipo === 'receita' ? t.valor : 0), 0);
@@ -435,8 +474,8 @@ export default function App() {
       descricao: descFin, 
       valor: Number(valorFin), 
       tipo: tipoFin, 
-      data: new Date(dataManualFin).toISOString(),
-      subTipo: subTipoCartao,
+      data: new Date(dataManualFin).toISOString(), // DATA RETROATIVA
+      subTipo: subTipoCartao, // DÉBITO OU CRÉDITO
       tenantId: user.uid,
       formaPagamento: formaPagamento
     };
@@ -611,7 +650,7 @@ export default function App() {
         <button onClick={() => setTab("servicos")} style={btnTab(tab === "servicos")}>Serviços</button>
         <button onClick={() => setTab("estoque")} style={btnTab(tab === "estoque")}>Estoque</button>
         <button onClick={() => setTab("perfil")} style={btnTab(tab === "perfil")}>Perfil</button>
-        <button onClick={() => setTab("retornos")} style={btnTab(tab ==="retornos")}>Retornos</button>
+        <button onClick={() => setTab("retornos")} style={btnTab(tab === "retornos")}>Retornos</button>
       </div>
 
       {/* === ABA AGENDA COM CALENDÁRIO E TIMELINE === */}
@@ -642,41 +681,58 @@ export default function App() {
             const horaFim = parseInt(horarioFechamento.split(':')[0]) || 19;
             const totalHoras = horaFim - horaInicio + 1;
 
+            const diaSemana = selectedDate.getDay(); // 0 (Dom) a 6 (Sab)
+            const configHoje = gradeHorarios[diaSemana];
+
+            // Se o dia estiver configurado como fechado na grade
+            if (!configHoje?.aberta) {
+              return <div style={{textAlign: 'center', padding: '20px', color: '#999'}}>Fechado hoje</div>;
+            }
+
+            const diaSemana = selectedDate.getDay();
+            const configHoje = gradeHorarios[diaSemana];
+
+            if (!configHoje?.aberta) {
+              return <div style={{textAlign: 'center', padding: '40px', color: '#999'}}>😴 Hoje estamos fechados. Aproveite o descanso!</div>;
+            }
+
             return Array.from({ length: totalHoras }, (_, i) => i + horaInicio).map(hora => {
+              // Filtro de horários específicos (Ex: Sábado só 7 e 9)
+              if (configHoje.tipo === 'fixo' && !configHoje.horas?.includes(hora)) return null;
+
+              // BLOQUEIO DE HORÁRIOS PASSADOS
+              const agora = new Date();
+              const dataComparacao = new Date(selectedDate);
+              dataComparacao.setHours(hora, 0, 0, 0);
+              const ehPassado = dataComparacao < agora;
+
               const app = getAppDoHorario(hora);
               const isStart = app && new Date(app.dataHora).getHours() === hora;
-              const isDomingo = selectedDate.getDay() === 0;
+
               return (
                 <div key={hora} style={{ ...itemStyle, borderLeft: app?.status === 'pago' ? '5px solid #4caf50' : (app ? '5px solid #ff9800' : '1px solid #eee') }}>
                   <div style={{ width: '50px', fontWeight: 'bold' }}>{String(hora).padStart(2, '0')}:00</div>
                   <div style={{ flex: 1 }}>
-                    {isDomingo ? <span style={{color:'#999'}}>Fechado</span> : app ? (
+                    {app ? (
                       <div onClick={() => {setSelHora(hora); setEditAppId(app.id); setSelCliente(app.clientId); setSelServico(app.serviceId); setClientSearch(getNome(clients, app.clientId)); setShowModal(true);}} style={{cursor:'pointer', opacity: isStart ? 1 : 0.6}}>
                         <strong>{getNome(clients, app.clientId)}</strong> {isStart && `- ${getNome(services, app.serviceId)}`}
                       </div>
                     ) : (
+                      ehPassado ? 
+                      <span style={{color:'#ccc', cursor:'not-allowed'}}>Indisponível</span> :
                       <span onClick={() => {setSelHora(hora); setEditAppId(null); setSelCliente(""); setClientSearch(""); setShowModal(true);}} style={{color: '#4caf50', cursor:'pointer'}}>+ Disponível</span>
                     )}
                   </div>
-                  {isStart && app.status !== "pago" && (
+                  {isStart && (
                     <div style={{ display: 'flex', gap: '3px' }}>
-                      <button 
-                        onClick={() => sendWhatsAppReminder(app)} 
-                        style={{ ...btnWhatsApp }}
-                        title="Enviar Lembrete via WhatsApp"
-                      >
-                        📱
-                      </button>
-                      <button onClick={() => handlePaymentClick(app)} style={btnPay}>💵</button>
+                      <button onClick={() => sendWhatsAppReminder(app)} style={btnWhatsApp}>📱</button>
+                      {app.status !== 'pago' && <button onClick={() => handlePaymentClick(app)} style={btnPay}>💵</button>}
+                      <button onClick={() => deleteWithConfirm("appointments", app.id, getNome(clients, app.clientId))} style={btnDel}>X</button>
                     </div>
                   )}
-                  {isStart && <button onClick={() => deleteWithConfirm("appointments", app.id, getNome(clients, app.clientId))} style={btnDel}>X</button>}
                 </div>
               );
             });
-          })()}
-        </div>
-      )}
 
       {/* === ABA FINANCEIRO (COM GRÁFICO) === */}
       {tab === "financeiro" && (
@@ -1016,6 +1072,26 @@ export default function App() {
                   onChange={e => setFidelidadeLimit(Number(e.target.value))}
                   style={inputStyle}
                 />
+                <label style={labelStyle}>⚙️ Dias de Atendimento</label>
+                <div style={{ display: 'grid', gap: '8px', marginBottom: '15px' }}>
+                  {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"].map((nome, index) => (
+                    <div key={index} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px', border: '1px solid #eee', borderRadius: '5px' }}>
+                      <span style={{fontSize: '12px', fontWeight: 'bold'}}>{nome}</span>
+                      <div style={{ display: 'flex', gap: '5px' }}>
+                        <button onClick={() => setGradeHorarios({...gradeHorarios, [index]: {...gradeHorarios[index], aberta: !gradeHorarios[index].aberta}})}
+                          style={{ padding: '4px 8px', fontSize: '10px', backgroundColor: gradeHorarios[index].aberta ? '#4caf50' : '#ccc', color: 'white', border: 'none', borderRadius: '3px' }}>
+                          {gradeHorarios[index].aberta ? "ABERTO" : "FECHADO"}
+                        </button>
+                        {gradeHorarios[index].aberta && (
+                          <select value={gradeHorarios[index].tipo} onChange={(e) => setGradeHorarios({...gradeHorarios, [index]: {...gradeHorarios[index], tipo: e.target.value, horas: e.target.value === 'fixo' ? [7,9] : []}})} style={{fontSize: '10px'}}>
+                            <option value="janela">Normal</option>
+                            <option value="fixo">7h e 9h</option>
+                          </select>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
                 <button onClick={handleSaveProfile} style={{...btnStyle, backgroundColor: '#4caf50'}}>💾 Salvar Alterações</button>
                 <button onClick={() => setEditingProfile(false)} style={{...btnStyle, backgroundColor: '#ccc', color: '#333', marginTop: '5px'}}>❌ Cancelar</button>
               </div>
