@@ -1075,5 +1075,3 @@ const btnDel = { backgroundColor: '#ffcdd2', color: '#c62828', border: 'none', b
 const btnEdit = { backgroundColor: '#e1f5fe', color: '#0277bd', border: 'none', borderRadius: '5px', padding: '5px 10px', cursor: 'pointer' };
 const btnLetter = (active) => ({ padding: '3px', minWidth: '22px', fontSize: '10px', backgroundColor: active ? '#d81b60' : '#f0f0f0', color: active ? 'white' : '#333', border: '1px solid #ddd', borderRadius: '3px', cursor: 'pointer' });
 
-// FECHAMENTO DO COMPONENTE PRINCIPAL
-}
