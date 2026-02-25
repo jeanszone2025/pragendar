@@ -172,7 +172,7 @@ setGradeHorarios(data.gradeHorarios || {
     } catch (error) { 
       console.error("Erro ao carregar perfil:", error); 
     }
-  } // <--- FECHAMENTO CORRETO AQUI
+  }
 
   // ========== UPLOAD DE LOGO (REVISADO) ==========
   const handleFileUpload = async (e) => {
@@ -193,9 +193,9 @@ setGradeHorarios(data.gradeHorarios || {
   };
 
   // ========== UPLOAD DE LOGO ==========
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !user) return;
+      const handleFileUpload = async (e) => {
+      const file = e.target.files[0];
+      if (!file || !user) return;
 
     setUploadingLogo(true);
     try {
@@ -681,26 +681,19 @@ setGradeHorarios(data.gradeHorarios || {
             const horaFim = parseInt(horarioFechamento.split(':')[0]) || 19;
             const totalHoras = horaFim - horaInicio + 1;
 
-            const diaSemana = selectedDate.getDay(); // 0 (Dom) a 6 (Sab)
+            const diaSemana = selectedDate.getDay(); 
             const configHoje = gradeHorarios[diaSemana];
 
-            // Se o dia estiver configurado como fechado na grade
+            // 1. Verifica se o dia está aberto
             if (!configHoje?.aberta) {
-              return <div style={{textAlign: 'center', padding: '20px', color: '#999'}}>Fechado hoje</div>;
-            }
-
-            const diaSemana = selectedDate.getDay();
-            const configHoje = gradeHorarios[diaSemana];
-
-            if (!configHoje?.aberta) {
-              return <div style={{textAlign: 'center', padding: '40px', color: '#999'}}>😴 Hoje estamos fechados. Aproveite o descanso!</div>;
+              return <div style={{textAlign: 'center', padding: '40px', color: '#999'}}>😴 Hoje estamos fechados.</div>;
             }
 
             return Array.from({ length: totalHoras }, (_, i) => i + horaInicio).map(hora => {
-              // Filtro de horários específicos (Ex: Sábado só 7 e 9)
+              // 2. Filtro de horários específicos (ex: Sábado só 7h e 9h)
               if (configHoje.tipo === 'fixo' && !configHoje.horas?.includes(hora)) return null;
 
-              // BLOQUEIO DE HORÁRIOS PASSADOS
+              // 3. Lógica para bloquear horários que já passaram hoje
               const agora = new Date();
               const dataComparacao = new Date(selectedDate);
               dataComparacao.setHours(hora, 0, 0, 0);
@@ -733,6 +726,9 @@ setGradeHorarios(data.gradeHorarios || {
                 </div>
               );
             });
+          })()}
+        </div>
+      )}
 
       {/* === ABA FINANCEIRO (COM GRÁFICO) === */}
       {tab === "financeiro" && (
