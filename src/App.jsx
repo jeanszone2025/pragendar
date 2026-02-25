@@ -57,7 +57,11 @@ export default function App() {
   const [valorFin, setValorFin] = useState("");
   const [tipoFin, setTipoFin] = useState("receita");
   const [formaPagamento, setFormaPagamento] = useState("pix");
-
+  const [dataManualFin, setDataManualFin] = useState(new Date().toISOString().split('T')[0]);
+  const [subTipoCartao, setSubTipoCartao] = useState("debito"); // Crédito ou Débito
+  const [descServico, setDescServico] = useState("");
+  const [tempoHoras, setTempoHoras] = useState(0);
+  const [tempoMinutos, setTempoMinutos] = useState(30);
   // ========== ESTADOS DO PERFIL ==========
   const [nomeEmpresa, setNomeEmpresa] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
@@ -318,16 +322,18 @@ export default function App() {
   // ========== HISTÓRICO DA CLIENTE ==========
   const getClientHistory = (clientId) => {
     const clientApps = appointments.filter(a => a.clientId === clientId);
-    const clientTransactions = transactions.filter(t => t.appointmentId && appointments.find(a => a.id === t.appointmentId && a.clientId === clientId));
+    const appIds = clientApps.map(a => a.id);
+    // Busca transações que estejam ligadas aos agendamentos deste cliente
+    const clientTransactions = transactions.filter(t => appIds.includes(t.appointmentId));
+    
     const totalGasto = clientTransactions.reduce((acc, t) => acc + (t.tipo === 'receita' ? t.valor : 0), 0);
     
     return {
-      apps: clientApps,
+      apps: clientApps.sort((a, b) => b.dataHora.localeCompare(a.dataHora)),
       totalGasto,
       count: clientApps.length
     };
   };
-
   // ========== CONTAGEM DE FIDELIDADE ==========
   const getClientFidelity = (clientId) => {
     const paidApps = appointments.filter(a => a.clientId === clientId && a.status === 'pago');
@@ -415,8 +421,10 @@ export default function App() {
 
     const mensagem = `Olá ${cli.nome}! ✨ Aqui é do ${nomeS}. Passando para confirmar seu horário de *${serv?.nome || 'procedimento'}* no dia *${dataFmt}* às *${horaFmt}:${minFmt}h*. Podemos confirmar? 🙏`;
 
-    const foneLimpo = cli.telefone.replace(/\D/g, '');
-    const link = `https://wa.me/55${foneLimpo}?text=${encodeURIComponent(mensagem)}`;
+    const foneLimpo = cli.telefone.replace(/\D/g, "");
+
+    const foneFinal = foneLimpo.startsWith("55") ? foneLimpo : `55${foneLimpo}`;
+    const link = `https://wa.me/${foneFinal}?text=${encodeURIComponent(mensagem)}`;
     
     window.open(link, '_blank');
   };
@@ -427,7 +435,8 @@ export default function App() {
       descricao: descFin, 
       valor: Number(valorFin), 
       tipo: tipoFin, 
-      data: new Date().toISOString(), 
+      data: new Date(dataManualFin).toISOString(),
+      subTipo: subTipoCartao,
       tenantId: user.uid,
       formaPagamento: formaPagamento
     };
@@ -602,6 +611,7 @@ export default function App() {
         <button onClick={() => setTab("servicos")} style={btnTab(tab === "servicos")}>Serviços</button>
         <button onClick={() => setTab("estoque")} style={btnTab(tab === "estoque")}>Estoque</button>
         <button onClick={() => setTab("perfil")} style={btnTab(tab === "perfil")}>Perfil</button>
+        <button onClick={() => setTab("retornos")} style={btnTab(tab ==="retornos")}>Retornos</button>
       </div>
 
       {/* === ABA AGENDA COM CALENDÁRIO E TIMELINE === */}
@@ -712,6 +722,8 @@ export default function App() {
               <option value="receita">Receita (Entrada)</option>
               <option value="despesa">Despesa (Saída)</option>
             </select>
+            <label style={labelStyle}>Data do Lançamento</label>
+            <input type="date" value={dataManualFin} onChange={e => setDataManualFin(e.target.value)} style={inputStyle} />
             <input placeholder="Descrição" value={descFin} onChange={e => setDescFin(e.target.value)} style={inputStyle} />
             <input placeholder="Valor R$" type="number" value={valorFin} onChange={e => setValorFin(e.target.value)} style={inputStyle} />
             
@@ -721,7 +733,12 @@ export default function App() {
               <option value="cartao">💳 Cartão</option>
               <option value="pix">📲 Pix</option>
             </select>
-
+            {formaPagamento === "cartao" && (
+            <select value={subTipoCartao} onChange={e => setSubTipoCartao(e.target.value)} style={inputStyle}>
+            <option value="debito">💳 Cartão de Débito</option>
+            <option value="credito">💳 Cartão de Crédito</option>
+            </select>
+            )}
             <button onClick={handleSaveTransaction} style={{...btnStyle, backgroundColor: tipoFin==='receita'?'#4caf50':'#f44336'}}>{editId ? "Salvar Alteração" : "Gravar"}</button>
             {editId && <button onClick={() => {setEditId(null); setDescFin(''); setValorFin('');}} style={{...btnStyle, backgroundColor:'#ccc', color:'#333', marginTop:'5px'}}>Cancelar</button>}
           </section>
@@ -806,29 +823,86 @@ export default function App() {
       )}
 
       {/* === ABA SERVIÇOS === */}
+      {/* === ABA SERVIÇOS (VERSÃO MELHORADA) === */}
       {tab === "servicos" && (
         <div>
           <section style={cardStyle}>
             <h3>{editId ? "Editar Serviço" : "Novo Serviço"}</h3>
-            <input placeholder="Nome do Serviço" value={nomeServico} onChange={e => setNomeServico(e.target.value)} style={inputStyle} />
-            <input placeholder="Preço R$" type="number" value={preco} onChange={e => setPreco(e.target.value)} style={inputStyle} />
-            <input placeholder="Duração (min)" type="number" value={duracao} onChange={e => setDuracao(e.target.value)} style={inputStyle} />
+            
+            <label style={labelStyle}>Nome do Serviço</label>
+            <input placeholder="Ex: Progressiva, Corte, etc." value={nomeServico} onChange={e => setNomeServico(e.target.value)} style={inputStyle} />
+            
+            <label style={labelStyle}>Preço R$</label>
+            <input placeholder="0.00" type="number" value={preco} onChange={e => setPreco(e.target.value)} style={inputStyle} />
+
+            <label style={labelStyle}>Descrição do Serviço</label>
+            <textarea 
+              placeholder="Detalhes do que está incluso no serviço..." 
+              value={descServico} 
+              onChange={e => setDescServico(e.target.value)} 
+              style={{...inputStyle, height: '80px', resize: 'none'}} 
+            />
+
+            <label style={labelStyle}>Tempo de Duração</label>
+            <div style={{ display: "flex", gap: "10px", marginBottom: "15px" }}>
+              <div style={{flex: 1}}>
+                <small>Horas</small>
+                <input type="number" value={tempoHoras} onChange={e => setTempoHoras(Number(e.target.value))} style={inputStyle} />
+              </div>
+              <div style={{flex: 1}}>
+                <small>Minutos</small>
+                <input type="number" value={tempoMinutos} onChange={e => setTempoMinutos(Number(e.target.value))} style={inputStyle} />
+              </div>
+            </div>
+
             <button onClick={async () => {
-              if (!nomeServico.trim() || !preco || !duracao) return alert("Preencha todos os campos");
-              const d = { nome: nomeServico, preco: Number(preco), duracao: Number(duracao), tenantId: user.uid };
+              const duracaoTotal = (tempoHoras * 60) + tempoMinutos;
+              if (!nomeServico.trim() || !preco || duracaoTotal <= 0) {
+                return alert("Preencha o nome, preço e a duração do serviço!");
+              }
+
+              const d = { 
+                nome: nomeServico, 
+                preco: Number(preco), 
+                duracao: duracaoTotal, 
+                descricao: descServico,
+                tenantId: user.uid 
+              };
+
               try {
                 if(editId) await updateDoc(doc(db, "services", editId), d);
                 else await addDoc(collection(db, "services"), d);
-                setEditId(null); setNomeServico(""); setPreco(""); setDuracao(""); loadData(user.uid);
+                
+                // Limpa tudo após salvar
+                setEditId(null); setNomeServico(""); setPreco(""); 
+                setDescServico(""); setTempoHoras(0); setTempoMinutos(30);
+                loadData(user.uid);
+                alert("✅ Serviço salvo!");
               } catch (error) {
                 alert("❌ Erro: " + error.message);
               }
-            }} style={btnStyle}>Salvar Serviço</button>
+            }} style={btnStyle}>
+              {editId ? "Salvar Alterações" : "Cadastrar Serviço"}
+            </button>
+            {editId && <button onClick={() => {setEditId(null); setNomeServico(""); setPreco(""); setDescServico(""); setTempoHoras(0); setTempoMinutos(30);}} style={{...btnStyle, backgroundColor:'#ccc', color:'#333', marginTop:'5px'}}>Cancelar</button>}
           </section>
+
+          <h3>Serviços Cadastrados</h3>
           {services.map(s => (
             <div key={s.id} style={itemStyle}>
-              <span style={{flex:1}}><strong>{s.nome}</strong><br/><small>R${s.preco} - {s.duracao}min</small></span>
-              <button onClick={() => {setEditId(s.id); setNomeServico(s.nome); setPreco(s.preco); setDuracao(s.duracao)}} style={btnEdit}>✏️</button>
+              <span style={{flex:1}}>
+                <strong>{s.nome}</strong><br/>
+                <small>R${s.preco} - {s.duracao >= 60 ? `${Math.floor(s.duracao/60)}h ${s.duracao%60}min` : `${s.duracao}min`}</small>
+                {s.descricao && <><br/><small style={{color: '#666', fontStyle: 'italic'}}>{s.descricao}</small></>}
+              </span>
+              <button onClick={() => {
+                setEditId(s.id); 
+                setNomeServico(s.nome); 
+                setPreco(s.preco);
+                setDescServico(s.descricao || "");
+                setTempoHoras(Math.floor(s.duracao / 60));
+                setTempoMinutos(s.duracao % 60);
+              }} style={btnEdit}>✏️</button>
               <button onClick={() => deleteWithConfirm("services", s.id, s.nome)} style={btnDel}>🗑️</button>
             </div>
           ))}
@@ -949,7 +1023,33 @@ export default function App() {
           </section>
         </div>
       )}
-
+      {/* === ABA RETORNO === */}
+      {tab === "retornos" && (
+  <div>
+    <h3>🔄 Sugestão de Retorno (30 dias)</h3>
+    <p style={{fontSize: '12px', color: '#666'}}>Clientes que completam 30 dias desde o último atendimento.</p>
+    {clients.map(cli => {
+      const history = getClientHistory(cli.id);
+      if (history.count === 0) return null;
+      const ultimaData = new Date(history.apps[0].dataHora);
+      const dataRetorno = new Date(ultimaData);
+      dataRetorno.setDate(dataRetorno.getDate() + 30);
+      
+      return (
+        <div key={cli.id} style={itemStyle}>
+          <span style={{flex: 1}}>
+            <strong>{cli.nome}</strong><br/>
+            <small>Último: {ultimaData.toLocaleDateString()}</small>
+          </span>
+          <button onClick={() => {
+            setSelectedDate(dataRetorno);
+            setTab("agenda");
+          }} style={{...btnStyle, width: 'auto', padding: '5px 10px'}}>Agendar</button>
+        </div>
+      );
+    })}
+  </div>
+)}
       {/* === MODAL DE AGENDAMENTO === */}
       {showModal && (
         <div style={modalOverlay}>
