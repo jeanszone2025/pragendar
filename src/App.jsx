@@ -169,82 +169,80 @@ export default function App() {
     }
   };
 
-  // ========== IMPORTAÇÃO CSV COM WRITEBATCH (MÚLTIPLOS BATCHES) ✨ ==========
+  // ========== IMPORTAÇÃO CSV ROBUSTA (EMOJIS + MULTIBATCH) ✨ ==========
   const handleCSVImport = async (e) => {
     const file = e.target.files[0];
     if (!file || !user) return;
 
     setImportingCSV(true);
     const reader = new FileReader();
+
     reader.onload = async (event) => {
       try {
-        let csv = event.target.result;
+        let content = event.target.result;
         
-        // Remove BOM se existir
-        if (csv.charCodeAt(0) === 0xFEFF) {
-          csv = csv.slice(1);
-        }
+        // 1. Remove lixo invisível do Excel (BOM)
+        if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
 
-        // Normaliza quebras de linha
-        csv = csv.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        // 2. Normaliza quebras de linha e limpa linhas vazias
+        const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+                             .map(l => l.trim()).filter(l => l.length > 0);
         
-        const linhas = csv.split('\n').map(l => l.trim()).filter(l => l.length > 0);
         let totalCount = 0;
         let batch = writeBatch(db);
         let batchCount = 0;
         let erros = [];
 
-        // Pula cabeçalho
-        for (let i = 1; i < linhas.length; i++) {
+        // 3. Pula o cabeçalho (i = 1) e processa
+        for (let i = 1; i < lines.length; i++) {
           try {
-            const partes = linhas[i].split(',');
-            const nome = partes[0]?.trim();
-            const telefone = partes[1]?.trim();
+            // FIX: Aceita vírgula ou ponto e vírgula (Excel BR)
+            const [nome, telefone] = lines[i].split(/[;,]/).map(item => item?.trim());
 
-            if (nome && nome.length > 0 && telefone && telefone.length > 0) {
+            if (nome && nome.length > 0) {
               const newRef = doc(collection(db, "clients"));
               batch.set(newRef, {
-                nome,
-                telefone,
+                nome: nome, // Preserva emojis e caracteres especiais
+                telefone: telefone || "",
                 tenantId: user.uid,
                 createdAt: serverTimestamp()
               });
+              
               batchCount++;
               totalCount++;
 
-              // A CADA 500, FAZ COMMIT E CRIA NOVO BATCH
+              // A cada 500 registros, envia o lote (limite do Firebase)
               if (batchCount === 500) {
                 await batch.commit();
                 batch = writeBatch(db);
                 batchCount = 0;
-                console.log(`✅ ${totalCount} contatos processados...`);
               }
-            } else if (nome || telefone) {
-              erros.push(`Linha ${i + 1}: Nome ou Telefone vazio`);
             }
           } catch (err) {
             erros.push(`Linha ${i + 1}: ${err.message}`);
           }
         }
 
-        // COMMIT FINAL
+        // 4. Envia o último lote se houver algo
         if (batchCount > 0) {
           await batch.commit();
         }
 
         loadData(user.uid);
-        let msg = `✅ ${totalCount} clientes importados com sucesso!`;
-        if (erros.length > 0) {
-          msg += `\n⚠️ ${erros.length} linhas com erro (puladas)`;
-        }
+        let msg = `✅ ${totalCount} contatos importados com sucesso!`;
+        if (erros.length > 0) msg += `\n⚠️ ${erros.length} linhas puladas.`;
         alert(msg);
+
       } catch (error) {
+        console.error("Erro na importação:", error);
         alert("❌ Erro ao importar CSV: " + error.message);
       } finally {
         setImportingCSV(false);
-        e.target.value = "";
+        e.target.value = ""; // Limpa o campo de arquivo
       }
     };
+
+    // 5. LEITURA OBRIGATÓRIA EM UTF-8 PARA EMOJIS
     reader.readAsText(file, 'UTF-8');
   };
 
