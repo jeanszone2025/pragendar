@@ -2083,31 +2083,19 @@ ${appointments.map(a => {
                 />
 
                 <label style={labelStyle}>🕐 Horário de Abertura</label>
-
-                <input                                                                                                                                                              <input 
-
+                <input 
                   type="time"
-
                   value={horarioAbertura} 
-
                   onChange={e => setHorarioAbertura(e.target.value)} 
-
                   style={inputStyle} 
-
                 />
 
                 <label style={labelStyle}>🕐 Horário de Fechamento</label>
-
                 <input 
-
                   type="time"
-
                   value={horarioFechamento} 
-
                   onChange={e => setHorarioFechamento(e.target.value)} 
-
                   style={inputStyle} 
-
                 />
 
                 <label style={labelStyle}>🎁 Limite de Fidelidade (atendimentos)</label>
