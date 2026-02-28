@@ -2084,9 +2084,7 @@ ${appointments.map(a => {
 
                 <label style={labelStyle}>🕐 Horário de Abertura</label>
 
-                <input 
-
-                  type="time"                                                                                                                                                             <input 
+                <input                                                                                                                                                              <input 
 
                   type="time"
 
