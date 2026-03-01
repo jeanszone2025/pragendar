@@ -710,39 +710,42 @@ export default function App() {
       const docRef = doc(db, "profiles", uid);
       const docSnap = await getDoc(docRef);
 
-      // ... dentro do if (docSnap.exists()) ...
-const data = docSnap.data();
+      if (docSnap.exists()) {
+        const data = docSnap.data();
 
-// 1. Carrega os estados simples
-setNomeEmpresa(data.nomeEmpresa || "");
-setLogoUrl(data.logoUrl || "");
-setTelefoneProfissional(data.telefoneProfissional || "");
-setHorarioAbertura(data.horarioAbertura || "09:00");
-setHorarioFechamento(data.horarioFechamento || "19:00");
-setFidelidadeLimit(data.fidelidadeLimit || 10);
-setPrimaryColor(data.primaryColor || "#d81b60");
-setChavePix(data.chavePix || "");
-setLinkCartao(data.linkCartao || "");
-setPorcentagemSinal(data.porcentagemSinal || 30);
-setTermosUso(data.termosUso || "");
+        // 1. Estados Simples
+        setNomeEmpresa(data.nomeEmpresa || "");
+        setLogoUrl(data.logoUrl || "");
+        setTelefoneProfissional(data.telefoneProfissional || "");
+        setHorarioAbertura(data.horarioAbertura || "09:00");
+        setHorarioFechamento(data.horarioFechamento || "19:00");
+        setFidelidadeLimit(data.fidelidadeLimit || 10);
+        setPrimaryColor(data.primaryColor || "#d81b60");
 
-// 2. TRATAMENTO DA GRADE DE HORÁRIOS (O "Cérebro" da Agenda)
-const gradeTratada = data.gradeHorarios || {};
+        // 2. Dados do SaaS (Sinal e Pagamentos)
+        setChavePix(data.chavePix || "");
+        setLinkCartao(data.linkCartao || "");
+        setPorcentagemSinal(data.porcentagemSinal || 30);
+        setTermosUso(data.termosUso || "O não comparecimento implica na perda do sinal.");
 
-for (let i = 0; i < 7; i++) {
-  // Se o dia não existir no banco, cria o padrão "fechado"
-  if (!gradeTratada[i]) {
-    gradeTratada[i] = { aberta: false, horas: [] };
+        // 3. Tratamento da Grade de Horários (Cérebro da Agenda)
+        const gradeTratada = data.gradeHorarios || {};
+        for (let i = 0; i < 7; i++) {
+          if (!gradeTratada[i]) {
+            gradeTratada[i] = { aberta: false, horas: [] };
+          }
+          if (!gradeTratada[i].horas) {
+            gradeTratada[i].horas = [];
+          }
+        }
+
+        setGradeHorarios(gradeTratada);
+        setProfile({ id: uid, ...data });
+      }
+    } catch (error) {
+      console.error("Erro ao carregar perfil:", error);
+    }
   }
-  // GARANTIA: Se o dia existir mas não tiver o array de horas, cria ele vazio
-  if (!gradeTratada[i].horas) {
-    gradeTratada[i].horas = [];
-  }
-}
-
-// 3. Atualiza o estado com a grade bonitinha
-setGradeHorarios(gradeTratada);
-setProfile({ id: uid, ...data });
         // 🆕 CARREGAR DADOS DO SaaS
         setChavePix(data.chavePix || "");
         setLinkCartao(data.linkCartao || "");
