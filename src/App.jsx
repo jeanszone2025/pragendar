@@ -89,9 +89,15 @@ export default function App() {
   const [alerta, setAlerta] = useState("");
   const [editProductId, setEditProductId] = useState(null);
 
-  // ========== 🎨 NOVO: SISTEMA DE TEMAS ==========
+  // ========== SISTEMA DE TEMAS ==========
   const [primaryColor, setPrimaryColor] = useState("#d81b60");
-  const [showThemePreview, setShowThemePreview] = useState(false);
+
+  // ========== 🤖 ESTADOS DA IA ASSISTENTE ==========
+  const [showAI, setShowAI] = useState(false);
+  const [aiQuery, setAiQuery] = useState("");
+  const [aiResponse, setAiResponse] = useState("Olá! Sou sua Gerente Virtual. Pergunte sobre horários, clientes, financeiro ou estoque. ✨");
+  const [aiChatHistory, setAiChatHistory] = useState([]);
+  const [aiActionData, setAiActionData] = useState(null);
 
   // ========== TEMA MODERNO (DINÂMICO COM CORES) ==========
   const modernTheme = {
@@ -182,7 +188,7 @@ export default function App() {
         setHorarioAbertura(data.horarioAbertura || "09:00");
         setHorarioFechamento(data.horarioFechamento || "19:00");
         setFidelidadeLimit(data.fidelidadeLimit || 10);
-        setPrimaryColor(data.primaryColor || "#d81b60"); // 🆕 NOVO
+        setPrimaryColor(data.primaryColor || "#d81b60");
         setGradeHorarios(data.gradeHorarios || { 
           0: { aberta: false }, 1: { aberta: false }, 2: { aberta: true }, 
           3: { aberta: true }, 4: { aberta: true }, 5: { aberta: true }, 
@@ -301,7 +307,7 @@ export default function App() {
         horarioFechamento,
         fidelidadeLimit,
         gradeHorarios,
-        primaryColor, // 🆕 NOVO
+        primaryColor,
         updatedAt: new Date().toISOString()
       }, { merge: true });
 
@@ -452,6 +458,23 @@ export default function App() {
     window.open(link, "_blank");
   };
 
+  // ========== 🆕 FUNÇÃO: COBRAR NO WHATSAPP (PARA A IA) ==========
+  const sendCobrancaWhatsApp = (cliente) => {
+    if (!cliente || !cliente.telefone) {
+      alert("❌ Cliente não possui telefone cadastrado!");
+      return;
+    }
+
+    const nomeS = nomeEmpresa || "Pragendar R$";
+    const mensagem = `Olá ${cliente.nome}! 👋 Aqui é do ${nomeS}. Há quanto tempo não nos vê? 😊 Saudades! Que tal marcar um horário para você? Temos promoções especiais esperando por você! 💅✨`;
+
+    const foneLimpo = cliente.telefone.replace(/\D/g, "");
+    const foneFinal = foneLimpo.startsWith("55") ? foneLimpo : `55${foneLimpo}`;
+    const link = `https://wa.me/${foneFinal}?text=${encodeURIComponent(mensagem)}`;
+    
+    window.open(link, "_blank");
+  };
+
   // ========== SALVAR TRANSAÇÃO ==========
   const handleSaveTransaction = async () => {
     const d = { 
@@ -472,7 +495,7 @@ export default function App() {
       setFormaPagamento("pix");
       loadData(user.uid);
     } catch (error) {
-      alert("❌ Erro ao salvar transação: " + error.message);
+      alert("�� Erro ao salvar transação: " + error.message);
     }
   };
 
@@ -514,90 +537,148 @@ th { background: ${primaryColor}; color: white; padding: 12px; text-align: left;
 td { border: 1px solid #ddd; padding: 10px; font-size: 12px; }
 tr:nth-child(even) { background: #f5f5f5; }
 .total-row { font-weight: bold; background: #ffe0ec; }
-@media print {
-body { margin: 0; padding: 0; }
-.no-print { display: none; }
-button { display: none; }
-}
+@media print { body { margin: 0; padding: 0; } .no-print { display: none; } button { display: none; } }
 </style>
 </head>
 <body>
 <div class="container">
 <h1>${nomeEmpresa || "Pragendar R$"}</h1>
 <p class="data-relatorio">Relatório Financeiro de ${dataAtual}</p>
-
 <h2 style="color: ${primaryColor}; border-bottom: 2px solid ${primaryColor}; padding-bottom: 10px;">Resumo Financeiro</h2>
 <div class="summary">
-<div class="card">
-<strong>💵 Dinheiro</strong>
-R$ ${chart.valores.dinheiro.toFixed(2)}<br/>
-<small>${chart.dinheiro}%</small>
-</div>
-<div class="card">
-<strong>💳 Cartão</strong>
-R$ ${chart.valores.cartao.toFixed(2)}<br/>
-<small>${chart.cartao}%</small>
-</div>
-<div class="card">
-<strong>📲 Pix</strong>
-R$ ${chart.valores.pix.toFixed(2)}<br/>
-<small>${chart.pix}%</small>
-</div>
+<div class="card"><strong>💵 Dinheiro</strong>R$ ${chart.valores.dinheiro.toFixed(2)}<br/><small>${chart.dinheiro}%</small></div>
+<div class="card"><strong>💳 Cartão</strong>R$ ${chart.valores.cartao.toFixed(2)}<br/><small>${chart.cartao}%</small></div>
+<div class="card"><strong>📲 Pix</strong>R$ ${chart.valores.pix.toFixed(2)}<br/><small>${chart.pix}%</small></div>
 </div>
 <div style="background: ${primaryColor}; color: white; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
 <h3 style="margin: 0; font-size: 28px;">R$ ${chart.total}</h3>
-<small>Total Recebido</small>
-</div>
-
+<small>Total Recebido</small></div>
 <h2 style="color: ${primaryColor}; border-bottom: 2px solid ${primaryColor}; padding-bottom: 10px;">Agendamentos Realizados</h2>
-<table>
-<thead>
-<tr>
-<th>Data/Hora</th>
-<th>Cliente</th>
-<th>Serviço</th>
-<th>Valor</th>
-<th>Status</th>
-</tr>
-</thead>
-<tbody>
+<table><thead><tr><th>Data/Hora</th><th>Cliente</th><th>Serviço</th><th>Valor</th><th>Status</th></tr></thead><tbody>
 ${appointments.map(a => {
   const serv = services.find(s => s.id === a.serviceId);
   const valor = serv?.preco || 0;
-  return `
-<tr>
-<td>${new Date(a.dataHora).toLocaleDateString("pt-BR")} ${String(new Date(a.dataHora).getHours()).padStart(2, "0")}:${String(new Date(a.dataHora).getMinutes()).padStart(2, "0")}</td>
-<td>${getNome(clients, a.clientId)}</td>
-<td>${getNome(services, a.serviceId)}</td>
-<td>R$ ${valor}</td>
-<td>${a.status === "pago" ? "✅ Pago" : "⏳ Pendente"}</td>
-</tr>
-`;
+  return `<tr><td>${new Date(a.dataHora).toLocaleDateString("pt-BR")} ${String(new Date(a.dataHora).getHours()).padStart(2, "0")}:${String(new Date(a.dataHora).getMinutes()).padStart(2, "0")}</td><td>${getNome(clients, a.clientId)}</td><td>${getNome(services, a.serviceId)}</td><td>R$ ${valor}</td><td>${a.status === "pago" ? "✅ Pago" : "⏳ Pendente"}</td></tr>`;
 }).join("")}
-<tr class="total-row">
-<td colspan="3" style="text-align: right;">TOTAL FATURADO:</td>
-<td colspan="2">R$ ${appointments.filter(a => a.status === "pago").reduce((acc, a) => {
+<tr class="total-row"><td colspan="3" style="text-align: right;">TOTAL FATURADO:</td><td colspan="2">R$ ${appointments.filter(a => a.status === "pago").reduce((acc, a) => {
   const serv = services.find(s => s.id === a.serviceId);
   return acc + (serv?.preco || 0);
-}, 0).toFixed(2)}</td>
-</tr>
-</tbody>
-</table>
-
+}, 0).toFixed(2)}</td></tr></tbody></table>
 <h2 style="color: ${primaryColor}; border-bottom: 2px solid ${primaryColor}; padding-bottom: 10px; margin-top: 30px;">Resumo de Clientes</h2>
 <p style="font-size: 12px; color: #666;">Total de clientes: <strong>${clients.length}</strong> | Total de atendimentos: <strong>${appointments.length}</strong></p>
-
 <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; color: #999; font-size: 11px;">
-<p>Relatório gerado automaticamente pelo Pragendar R$ em ${new Date().toLocaleString("pt-BR")}</p>
-<p>Este documento é confidencial e destinado apenas ao uso interno da empresa.</p>
-</div>
-</div>
-<script>window.print(); window.close();</script>
-</body>
-</html>`;
+<p>Relatório gerado automaticamente pelo Pragendar R$ em ${new Date().toLocaleString("pt-BR")}</p></div></div>
+<script>window.print(); window.close();</script></body></html>`;
 
     win.document.write(html);
     win.document.close();
+  };
+
+  // ========== 🤖 FUNÇÃO DA IA ASSISTENTE COM AÇÕES RÁPIDAS ==========
+  const askAI = (pergunta) => {
+    const p = pergunta.toLowerCase().trim();
+    let resposta = "";
+    let acoes = null;
+
+    if (p.includes("hoje") && (p.includes("agenda") || p.includes("horário") || p.includes("atendimento"))) {
+      const hoje = appointments.filter(a => {
+        const dataApp = new Date(a.dataHora);
+        const dataHoje = new Date();
+        return dataApp.toLocaleDateString() === dataHoje.toLocaleDateString();
+      });
+      
+      if (hoje.length === 0) {
+        resposta = "🎉 Sua agenda de hoje está livre! Você tem tempo para descansar ou agendar novas clientes.";
+      } else {
+        const horarios = hoje.map(a => {
+          const cli = clients.find(c => c.id === a.clientId);
+          const serv = services.find(s => s.id === a.serviceId);
+          const h = new Date(a.dataHora).getHours();
+          const m = String(new Date(a.dataHora).getMinutes()).padStart(2, "0");
+          return `${h}:${m} - ${cli?.nome} (${serv?.nome})`;
+        }).join("\n");
+        resposta = `📅 Sua agenda de hoje:\n\n${horarios}\n\nTotal: ${hoje.length} atendimentos`;
+      }
+    }
+    else if (p.includes("financeiro") || p.includes("faturamento") || p.includes("ganhei") || p.includes("receita")) {
+      const chart = getChartData();
+      resposta = `💰 Resumo Financeiro:\n\nTotal Recebido: R$ ${chart.total}\n\n💵 Dinheiro: R$ ${chart.valores.dinheiro.toFixed(2)} (${chart.dinheiro}%)\n💳 Cartão: R$ ${chart.valores.cartao.toFixed(2)} (${chart.cartao}%)\n📲 Pix: R$ ${chart.valores.pix.toFixed(2)} (${chart.pix}%)`;
+    }
+    else if (p.includes("fiel") || p.includes("prêmio") || p.includes("fidelidade")) {
+      const fiéis = clients.filter(c => getClientFidelity(c.id).achieved);
+      if (fiéis.length === 0) {
+        resposta = "Nenhuma cliente atingiu o prêmio de fidelidade ainda.";
+      } else {
+        resposta = `🎁 Clientes que ganharam Prêmio (${fiéis.length}):\n\n${fiéis.map(c => `✨ ${c.nome}`).join("\n")}`;
+      }
+    }
+    else if (p.includes("sumida") || p.includes("ausente") || p.includes("voltou") || p.includes("retomar")) {
+      const hoje = new Date();
+      const sumidas = clients.filter(c => {
+        const history = getClientHistory(c.id);
+        if (history.count === 0) return false;
+        const ultimaData = new Date(history.apps[0].dataHora);
+        const diasPassados = (hoje - ultimaData) / (1000 * 60 * 60 * 24);
+        return diasPassados > 30;
+      });
+
+      if (sumidas.length === 0) {
+        resposta = "🎉 Todas as suas clientes estão engajadas! Nenhuma está sumida há mais de 30 dias.";
+      } else {
+        resposta = `⚠️ Clientes que não retornam há 30+ dias (${sumidas.length}):\n\n${sumidas.slice(0, 5).map(c => {
+          const history = getClientHistory(c.id);
+          const ultimaData = new Date(history.apps[0].dataHora);
+          const diasPassados = Math.floor((hoje - ultimaData) / (1000 * 60 * 60 * 24));
+          return `👤 ${c.nome} - Última vez: ${diasPassados} dias atrás`;
+        }).join("\n")}`;
+        acoes = { tipo: "sumidas", clientes: sumidas.slice(0, 5) };
+      }
+    }
+    else if (p.includes("quem é") || p.includes("dados de") || p.includes("história de") || p.includes("sobre a")) {
+      const nomeBusca = p.replace("quem é", "").replace("dados de", "").replace("história de", "").replace("sobre a", "").replace("sobre o", "").trim();
+      const cli = clients.find(c => c.nome.toLowerCase().includes(nomeBusca));
+      
+      if (!cli) {
+        resposta = `Não encontrei nenhuma cliente com o nome "${nomeBusca}". Tente de novo! 🔍`;
+      } else {
+        const history = getClientHistory(cli.id);
+        const fidelity = getClientFidelity(cli.id);
+        const ultimaVisita = history.count > 0 ? new Date(history.apps[0].dataHora).toLocaleDateString() : "Nunca";
+        
+        resposta = `📂 Perfil de ${cli.nome}:\n\n📞 Telefone: ${cli.telefone || "Não informado"}\n💰 Total Gasto: R$ ${history.totalGasto.toFixed(2)}\n📊 Atendimentos: ${history.count}\n🎁 Fidelidade: ${fidelity.count}/${fidelity.limit}\n📅 Última Visita: ${ultimaVisita}`;
+        acoes = { tipo: "cliente", cliente: cli };
+      }
+    }
+    else if (p.includes("estoque") || p.includes("produto") || p.includes("crítico")) {
+      const criticos = inventory.filter(prod => Number(prod.quantidade) <= Number(prod.alertaCritico));
+      if (criticos.length === 0) {
+        resposta = "✅ Seu estoque está ótimo! Nenhum produto em nível crítico.";
+      } else {
+        resposta = `⚠️ Produtos em Nível Crítico (${criticos.length}):\n\n${criticos.map(p => `🔴 ${p.nome}: ${p.quantidade} un. (Alerta: ${p.alertaCritico})`).join("\n")}`;
+      }
+    }
+    else if (p.includes("serviço") || p.includes("procedimento") || p.includes("qual é meu")) {
+      if (services.length === 0) {
+        resposta = "Você ainda não cadastrou nenhum serviço.";
+      } else {
+        resposta = `💇 Seus Serviços (${services.length}):\n\n${services.map(s => `🎯 ${s.nome} - R$ ${s.preco.toFixed(2)} (${s.duracao} min)`).join("\n")}`;
+      }
+    }
+    else if (p.includes("quantos clientes") || p.includes("total de clientes")) {
+      resposta = `👥 Total de Clientes: ${clients.length}\n\nClientes com pelo menos 1 atendimento: ${clients.filter(c => getClientHistory(c.id).count > 0).length}`;
+    }
+    else if (p.includes("hoje") && p.includes("faturou")) {
+      const hojeTotal = calcTotal(transactions, "hoje");
+      const mesTotal = calcTotal(transactions, "mes");
+      resposta = `📈 Faturamento:\n\nHoje: R$ ${hojeTotal.toFixed(2)}\nEste Mês: R$ ${mesTotal.toFixed(2)}`;
+    }
+    else {
+      resposta = `Pergunte sobre:\n\n• 📅 "Meus horários hoje"\n• 💰 "Meu financeiro"\n• 👥 "Dados da Maria"\n• 🔄 "Clientes sumidas"\n• 🎁 "Prêmio fidelidade"\n• 📦 "Estoque crítico"\n• 💇 "Meus serviços"\n\nOu seja mais específica! 😊`;
+    }
+
+    setAiChatHistory([...aiChatHistory, { pergunta, resposta, acoes, timestamp: new Date() }]);
+    setAiActionData(acoes);
+    return resposta;
   };
 
   // ========== RENDERIZAÇÃO CONDICIONAL - TELA DE LOGIN ==========
@@ -758,8 +839,7 @@ ${appointments.map(a => {
       </nav>
 
       <div style={{ padding: "0 15px" }}>
-
-        {/* === ABA AGENDA COM CALENDÁRIO === */}
+        {/* === ABA AGENDA === */}
         {tab === "agenda" && (
           <div>
             <div style={{...cardStyle, boxShadow: modernTheme.shadow}}>
@@ -775,16 +855,11 @@ ${appointments.map(a => {
                 {Array.from({ length: new Date(viewYear, viewMonth + 1, 0).getDate() }, (_, i) => i + 1).map(dia => (
                   <div key={dia} onClick={() => setSelectedDate(new Date(viewYear, viewMonth, dia))}
                     style={{ 
-                      padding: "10px 5px", 
-                      textAlign: "center", 
-                      borderRadius: modernTheme.radiusTiny, 
-                      cursor: "pointer", 
+                      padding: "10px 5px", textAlign: "center", borderRadius: modernTheme.radiusTiny, cursor: "pointer", 
                       border: `2px solid ${selectedDate.getDate() === dia && selectedDate.getMonth() === viewMonth ? primaryColor : "#eee"}`,
                       backgroundColor: selectedDate.getDate() === dia && selectedDate.getMonth() === viewMonth ? primaryColor : modernTheme.card,
                       color: selectedDate.getDate() === dia && selectedDate.getMonth() === viewMonth ? "#fff" : modernTheme.text, 
-                      fontSize: "12px", 
-                      fontWeight: selectedDate.getDate() === dia && selectedDate.getMonth() === viewMonth ? "bold" : "normal",
-                      transition: "all 0.2s ease"
+                      fontSize: "12px", fontWeight: selectedDate.getDate() === dia && selectedDate.getMonth() === viewMonth ? "bold" : "normal"
                     }}>
                     {dia}
                   </div>
@@ -794,7 +869,6 @@ ${appointments.map(a => {
 
             <div style={{...cardStyle, boxShadow: modernTheme.shadow, marginTop: "15px"}}>
               <h3 style={{borderBottom: `2px solid ${primaryColor}`, paddingBottom: "10px", color: modernTheme.text, margin: "0 0 15px 0"}}>📅 Dia {selectedDate.toLocaleDateString("pt-BR")}</h3>
-              
               {(() => {
                 const horaInicio = parseInt(horarioAbertura.split(":")[0]) || 8;
                 const horaFim = parseInt(horarioFechamento.split(":")[0]) || 19;
@@ -803,7 +877,7 @@ ${appointments.map(a => {
                 const configHoje = gradeHorarios[diaSemana];
 
                 if (!configHoje?.aberta) {
-                  return <div style={{textAlign: "center", padding: "40px 20px", color: modernTheme.textMuted, backgroundColor: modernTheme.primaryLight, borderRadius: modernTheme.radius, marginTop: "20px"}}>😴 Estamos fechados hoje. Volte em outro dia!</div>;
+                  return <div style={{textAlign: "center", padding: "40px 20px", color: modernTheme.textMuted, backgroundColor: modernTheme.primaryLight, borderRadius: modernTheme.radius}}>😴 Estamos fechados hoje. Volte em outro dia!</div>;
                 }
 
                 return Array.from({ length: totalHoras }, (_, i) => i + horaInicio).map(hora => {
@@ -838,10 +912,10 @@ ${appointments.map(a => {
                         )}
                       </div>
                       {isStart && (
-                        <div style={{ display: "flex", gap: "5px" }}>
-                          <button onClick={() => sendWhatsAppReminder(app)} style={btnWhatsApp} title="Enviar no WhatsApp">📱</button>
-                          {app.status !== "pago" && <button onClick={() => handlePaymentClick(app)} style={btnPay} title="Registrar Pagamento">💵</button>}
-                          <button onClick={() => deleteWithConfirm("appointments", app.id, getNome(clients, app.clientId))} style={btnDel} title="Deletar">🗑️</button>
+                        <div style={{ display: "flex", gap: "3px" }}>
+                          <button onClick={() => sendWhatsAppReminder(app)} style={btnWhatsApp}>📱</button>
+                          {app.status !== "pago" && <button onClick={() => handlePaymentClick(app)} style={btnPay}>💵</button>}
+                          <button onClick={() => deleteWithConfirm("appointments", app.id, getNome(clients, app.clientId))} style={btnDel}>X</button>
                         </div>
                       )}
                     </div>
@@ -1131,6 +1205,42 @@ ${appointments.map(a => {
           </div>
         )}
 
+        {/* === ABA RETORNOS === */}
+        {tab === "retornos" && (
+          <div>
+            <div style={{...cardStyle, boxShadow: modernTheme.shadow, borderLeft: `4px solid ${primaryColor}`}}>
+              <h3 style={{borderBottom: `2px solid ${primaryColor}`, paddingBottom: "10px", color: modernTheme.text, margin: "0 0 10px 0"}}>🔄 Sugestão de Retorno (30 dias)</h3>
+              <p style={{fontSize: "12px", color: modernTheme.textLight, marginBottom: "0", fontWeight: "500"}}>Clientes que completam 30 dias desde o último atendimento.</p>
+            </div>
+
+            {clients.length === 0 ? (
+              <div style={{...cardStyle, textAlign: "center", color: modernTheme.textMuted, boxShadow: modernTheme.shadow, marginTop: "15px"}}>Nenhuma cliente cadastrada</div>
+            ) : (
+              clients.map(cli => {
+                const history = getClientHistory(cli.id);
+                if (history.count === 0) return null;
+                const ultimaData = new Date(history.apps[0].dataHora);
+                const dataRetorno = new Date(ultimaData);
+                dataRetorno.setDate(dataRetorno.getDate() + 30);
+                
+                return (
+                  <div key={cli.id} style={{...itemStyle, borderLeft: `4px solid ${primaryColor}`, borderRadius: modernTheme.radiusTiny, marginTop: "10px", boxShadow: modernTheme.shadow}}>
+                    <span style={{flex: 1}}>
+                      <strong style={{color: modernTheme.text}}>{cli.nome}</strong><br/>
+                      <small style={{color: modernTheme.textLight, fontWeight: "600"}}>Último: {ultimaData.toLocaleDateString("pt-BR")}</small><br/>
+                      <small style={{color: primaryColor, fontWeight: "bold"}}>📅 Retorno: {dataRetorno.toLocaleDateString("pt-BR")}</small>
+                    </span>
+                    <button onClick={() => {
+                      setSelectedDate(dataRetorno);
+                      setTab("agenda");
+                    }} style={{...btnStyle, width: "auto", padding: "6px 12px", fontSize: "12px", background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}dd)`}}>Agendar</button>
+                  </div>
+                );
+              }).filter(item => item !== null)
+            )}
+          </div>
+        )}
+
         {/* === ABA PERFIL === */}
         {tab === "perfil" && (
           <div>
@@ -1252,45 +1362,360 @@ ${appointments.map(a => {
             </section>
           </div>
         )}
-
-        {/* === ABA RETORNOS === */}
-        {tab === "retornos" && (
-          <div>
-            <div style={{...cardStyle, boxShadow: modernTheme.shadow, borderLeft: `4px solid ${primaryColor}`}}>
-              <h3 style={{borderBottom: `2px solid ${primaryColor}`, paddingBottom: "10px", color: modernTheme.text, margin: "0 0 10px 0"}}>🔄 Sugestão de Retorno (30 dias)</h3>
-              <p style={{fontSize: "12px", color: modernTheme.textLight, marginBottom: "0", fontWeight: "500"}}>Clientes que completam 30 dias desde o último atendimento.</p>
-            </div>
-
-            {clients.length === 0 ? (
-              <div style={{...cardStyle, textAlign: "center", color: modernTheme.textMuted, boxShadow: modernTheme.shadow, marginTop: "15px"}}>Nenhuma cliente cadastrada</div>
-            ) : (
-              clients.map(cli => {
-                const history = getClientHistory(cli.id);
-                if (history.count === 0) return null;
-                const ultimaData = new Date(history.apps[0].dataHora);
-                const dataRetorno = new Date(ultimaData);
-                dataRetorno.setDate(dataRetorno.getDate() + 30);
-                
-                return (
-                  <div key={cli.id} style={{...itemStyle, borderLeft: `4px solid ${primaryColor}`, borderRadius: modernTheme.radiusTiny, marginTop: "10px", boxShadow: modernTheme.shadow}}>
-                    <span style={{flex: 1}}>
-                      <strong style={{color: modernTheme.text}}>{cli.nome}</strong><br/>
-                      <small style={{color: modernTheme.textLight, fontWeight: "600"}}>Último: {ultimaData.toLocaleDateString("pt-BR")}</small><br/>
-                      <small style={{color: primaryColor, fontWeight: "bold"}}>📅 Retorno: {dataRetorno.toLocaleDateString("pt-BR")}</small>
-                    </span>
-                    <button onClick={() => {
-                      setSelectedDate(dataRetorno);
-                      setTab("agenda");
-                    }} style={{...btnStyle, width: "auto", padding: "6px 12px", fontSize: "12px", background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}dd)`}}>Agendar</button>
-                  </div>
-                );
-              }).filter(item => item !== null)
-            )}
-          </div>
-        )}
       </div>
 
-      {/* === MODAL DE AGENDAMENTO === */}
+      {/* ========== 🤖 BOTÃO FLUTUANTE DA IA ========== */}
+      <button 
+        onClick={() => setShowAI(!showAI)}
+        style={{
+          position: "fixed", 
+          bottom: "30px", 
+          right: "20px",
+          width: "70px", 
+          height: "70px", 
+          borderRadius: "50%",
+          backgroundColor: primaryColor, 
+          color: "white",
+          border: "none", 
+          boxShadow: modernTheme.shadowHeavy,
+          fontSize: "28px", 
+          cursor: "pointer", 
+          zIndex: 2000,
+          display: "flex", 
+          alignItems: "center", 
+          justifyContent: "center",
+          transition: "all 0.3s ease",
+          fontWeight: "bold"
+        }}
+        onMouseOver={(e) => {
+          e.currentTarget.style.transform = "scale(1.1)";
+        }}
+        onMouseOut={(e) => {
+          e.currentTarget.style.transform = "scale(1)";
+        }}
+        title="Gerente Virtual IA"
+      >
+        {showAI ? "✖️" : "🤖"}
+      </button>
+
+      {/* ========== 🤖 BARRA LATERAL DA IA COM BOTÕES DE AÇÃO RÁPIDA ========== */}
+      {showAI && (
+        <div style={{
+          position: "fixed", 
+          top: 0, 
+          right: 0, 
+          width: "340px", 
+          height: "100%",
+          backgroundColor: "rgba(255, 255, 255, 0.95)", 
+          backdropFilter: "blur(15px)",
+          boxShadow: "-8px 0 30px rgba(0,0,0,0.15)", 
+          zIndex: 1999,
+          padding: "0",
+          display: "flex", 
+          flexDirection: "column",
+          animation: "slideInRight 0.3s ease-out",
+          overflowY: "auto"
+        }}>
+          {/* HEADER DO CHAT */}
+          <div style={{ 
+            padding: "20px 15px", 
+            backgroundColor: primaryColor, 
+            color: "white",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            borderBottom: `3px solid ${primaryColor}60`,
+            position: "sticky",
+            top: 0,
+            zIndex: 10
+          }}>
+            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "bold", display: "flex", alignItems: "center", gap: "8px" }}>
+              🤖 Gerente Virtual
+            </h3>
+            <button 
+              onClick={() => setShowAI(false)}
+              style={{
+                background: "none",
+                border: "none",
+                color: "white",
+                fontSize: "20px",
+                cursor: "pointer",
+                fontWeight: "bold",
+                transition: "all 0.2s"
+              }}
+              onMouseOver={(e) => e.target.style.transform = "scale(1.2)"}
+              onMouseOut={(e) => e.target.style.transform = "scale(1)"}
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* HISTÓRICO DE CHAT */}
+          <div style={{ 
+            flex: 1, 
+            overflowY: "auto", 
+            padding: "15px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "12px"
+          }}>
+            {/* PRIMEIRA MENSAGEM (Resposta Inicial) */}
+            <div style={{
+              backgroundColor: modernTheme.primaryLight,
+              padding: "12px",
+              borderRadius: modernTheme.radius,
+              fontSize: "13px",
+              color: modernTheme.text,
+              textAlign: "left",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              borderLeft: `4px solid ${primaryColor}`
+            }}>
+              {aiResponse}
+            </div>
+
+            {/* HISTÓRICO DE CONVERSAS COM AÇÕES RÁPIDAS */}
+            {aiChatHistory.map((chat, index) => (
+              <div key={index}>
+                {/* Pergunta do Usuário */}
+                <div style={{
+                  backgroundColor: primaryColor,
+                  color: "white",
+                  padding: "10px",
+                  borderRadius: modernTheme.radius,
+                  fontSize: "12px",
+                  textAlign: "right",
+                  marginLeft: "30px",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word"
+                }}>
+                  {chat.pergunta}
+                </div>
+
+                {/* Resposta da IA */}
+                <div style={{
+                  backgroundColor: modernTheme.primaryLight,
+                  padding: "10px",
+                  borderRadius: modernTheme.radius,
+                  fontSize: "12px",
+                  color: modernTheme.text,
+                  textAlign: "left",
+                  marginRight: "30px",
+                  marginTop: "6px",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  borderLeft: `3px solid ${primaryColor}`
+                }}>
+                  {chat.resposta}
+                </div>
+
+                {/* BOTÕES DE AÇÃO RÁPIDA */}
+                {chat.acoes && chat.acoes.tipo === "sumidas" && (
+                  <div style={{
+                    marginRight: "30px",
+                    marginTop: "8px",
+                    marginBottom: "8px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px"
+                  }}>
+                    {chat.acoes.clientes.map((cliente, i) => (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          sendCobrancaWhatsApp(cliente);
+                          alert(`✅ WhatsApp aberto para ${cliente.nome}!`);
+                        }}
+                        style={{
+                          padding: "8px 10px",
+                          backgroundColor: "#25D366",
+                          color: "white",
+                          border: "none",
+                          borderRadius: modernTheme.radiusTiny,
+                          cursor: "pointer",
+                          fontSize: "11px",
+                          fontWeight: "bold",
+                          transition: "all 0.2s ease",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          justifyContent: "center"
+                        }}
+                        onMouseOver={(e) => {
+                          e.currentTarget.style.opacity = "0.9";
+                          e.currentTarget.style.transform = "translateY(-2px)";
+                        }}
+                        onMouseOut={(e) => {
+                          e.currentTarget.style.opacity = "1";
+                          e.currentTarget.style.transform = "translateY(0)";
+                        }}
+                      >
+                        📲 Cobrar {cliente.nome}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* AÇÃO RÁPIDA: Cliente Específico */}
+                {chat.acoes && chat.acoes.tipo === "cliente" && chat.acoes.cliente && (
+                  <div style={{
+                    marginRight: "30px",
+                    marginTop: "8px",
+                    marginBottom: "8px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px"
+                  }}>
+                    <button
+                      onClick={() => {
+                        sendCobrancaWhatsApp(chat.acoes.cliente);
+                        alert(`✅ WhatsApp aberto para ${chat.acoes.cliente.nome}!`);
+                      }}
+                      style={{
+                        padding: "8px 10px",
+                        backgroundColor: "#25D366",
+                        color: "white",
+                        border: "none",
+                        borderRadius: modernTheme.radiusTiny,
+                        cursor: "pointer",
+                        fontSize: "11px",
+                        fontWeight: "bold",
+                        transition: "all 0.2s ease"
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.opacity = "0.9";
+                        e.currentTarget.style.transform = "translateY(-2px)";
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.opacity = "1";
+                        e.currentTarget.style.transform = "translateY(0)";
+                      }}
+                    >
+                      📲 Enviar WhatsApp
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* INPUT DE PERGUNTA */}
+          <div style={{ 
+            padding: "15px",
+            borderTop: `1px solid ${primaryColor}20`,
+            backgroundColor: "rgba(255,255,255,0.8)",
+            position: "sticky",
+            bottom: 0,
+            zIndex: 10
+          }}>
+            <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+              <input 
+                placeholder="Pergunte sobre..."
+                value={aiQuery}
+                onChange={(e) => setAiQuery(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && aiQuery.trim()) {
+                    setAiResponse(askAI(aiQuery));
+                    setAiQuery("");
+                  }
+                }}
+                style={{ 
+                  flex: 1,
+                  padding: "10px",
+                  borderRadius: modernTheme.radiusTiny,
+                  border: `1px solid ${primaryColor}40`,
+                  fontSize: "12px",
+                  fontFamily: "inherit"
+                }}
+              />
+              <button 
+                onClick={() => {
+                  if (aiQuery.trim()) {
+                    setAiResponse(askAI(aiQuery));
+                    setAiQuery("");
+                  }
+                }}
+                style={{
+                  padding: "10px 14px",
+                  backgroundColor: primaryColor,
+                  color: "white",
+                  border: "none",
+                  borderRadius: modernTheme.radiusTiny,
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  fontWeight: "bold",
+                  transition: "all 0.2s ease"
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.opacity = "0.9";
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.opacity = "1";
+                }}
+              >
+                📤
+              </button>
+            </div>
+
+            {/* SUGESTÕES RÁPIDAS */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+              {[
+                { icon: "📅", texto: "Hoje", query: "Meus horários hoje" },
+                { icon: "💰", texto: "Caixa", query: "Meu financeiro" },
+                { icon: "👥", texto: "Clientes", query: "Quantos clientes tenho" },
+                { icon: "🔄", texto: "Ausentes", query: "Clientes sumidas" }
+              ].map((btn, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    setAiResponse(askAI(btn.query));
+                    setAiQuery("");
+                  }}
+                  style={{
+                    padding: "8px",
+                    backgroundColor: modernTheme.primaryLight,
+                    border: `1px solid ${primaryColor}40`,
+                    borderRadius: modernTheme.radiusTiny,
+                    cursor: "pointer",
+                    fontSize: "11px",
+                    fontWeight: "600",
+                    color: modernTheme.text,
+                    transition: "all 0.2s ease"
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.backgroundColor = primaryColor;
+                    e.currentTarget.style.color = "white";
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.backgroundColor = modernTheme.primaryLight;
+                    e.currentTarget.style.color = modernTheme.text;
+                  }}
+                >
+                  {btn.icon} {btn.texto}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Animação de entrada */}
+          <style>
+            {`
+              @keyframes slideInRight {
+                from {
+                  transform: translateX(100%);
+                  opacity: 0;
+                }
+                to {
+                  transform: translateX(0);
+                  opacity: 1;
+                }
+              }
+            `}
+          </style>
+        </div>
+      )}
+
+      {/* === MODAIS === */}
       {showModal && (
         <div style={modalOverlay}>
           <div style={{...modalContent, boxShadow: modernTheme.shadowHeavy, borderTop: `4px solid ${primaryColor}`}}>
@@ -1328,7 +1753,6 @@ ${appointments.map(a => {
         </div>
       )}
 
-      {/* === MODAL DE PAGAMENTO === */}
       {showPaymentModal && selectedAppForPayment && (
         <div style={modalOverlay}>
           <div style={{...modalContent, boxShadow: modernTheme.shadowHeavy, borderTop: `4px solid ${primaryColor}`}}>
@@ -1353,7 +1777,6 @@ ${appointments.map(a => {
         </div>
       )}
 
-      {/* === MODAL DE HISTÓRICO DA CLIENTE === */}
       {showClientHistoryModal && selectedClientForHistory && (() => {
         const history = getClientHistory(selectedClientForHistory.id);
         const fidelity = getClientFidelity(selectedClientForHistory.id);
@@ -1410,7 +1833,7 @@ const calcTotal = (list, p) => {
   }).reduce((acc, c) => acc + c.valor, 0);
 };
 
-// ========== ESTILOS CENTRALIZADOS (MODERNIZADOS) ==========
+// ========== ESTILOS CENTRALIZADOS ==========
 const inputStyle = { 
   width: "100%", 
   padding: "12px", 
