@@ -1611,7 +1611,7 @@ ${appointments.map(a => {
               <h3 style={{color: primaryColor, marginBottom: "15px"}}>{editId ? "✏️ Editar Serviço" : "💇 Novo Serviço"}</h3>
               
               <label style={labelStyle}>Nome do Serviço</label>
-              <input placeholder="Ex: Progressiva..." value={nomeServico} onChange={e => setNomeServico(e.target.value)} style={inputStyle} />
+              <input placeholder="Ex: Alongamento..." value={nomeServico} onChange={e => setNomeServico(e.target.value)} style={inputStyle} />
               
               <label style={labelStyle}>Preço R$</label>
               <input placeholder="0.00" type="number" step="0.01" value={preco} onChange={e => setPreco(e.target.value)} style={inputStyle} />
@@ -2198,3 +2198,149 @@ ${appointments.map(a => {
                 onChange={(e) => setAiQuery(e.target.value)}
                 onKeyPress={(e) => {
                   if (e.key === 'Enter' && aiQuery.trim()) {
+                    onKeyPress={(e) => {
+                  if (e.key === 'Enter' && aiQuery.trim()) {
+                    setAiResponse(askAI(aiQuery));
+                    setAiQuery("");
+                  }
+                }}
+                style={{ 
+                  flex: 1,
+                  padding: "10px",
+                  borderRadius: modernTheme.radiusTiny,
+                  border: `1px solid ${primaryColor}40`,
+                  fontSize: "12px",
+                  fontFamily: "inherit"
+                }}
+              />
+              <button 
+                onClick={() => {
+                  if (aiQuery.trim()) {
+                    setAiResponse(askAI(aiQuery));
+                    setAiQuery("");
+                  }
+                }}
+                style={{
+                  padding: "10px 14px",
+                  backgroundColor: primaryColor,
+                  color: "white",
+                  border: "none",
+                  borderRadius: modernTheme.radiusTiny,
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  fontWeight: "bold",
+                  transition: "all 0.2s ease"
+                }}
+              >
+                📤
+              </button>
+            </div>
+
+            {/* SUGESTÕES RÁPIDAS */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+              {[
+                { icon: "📅", texto: "Hoje", query: "Meus horários hoje" },
+                { icon: "💰", texto: "Caixa", query: "Meu financeiro" },
+                { icon: "👥", texto: "Clientes", query: "Quantos clientes tenho" },
+                { icon: "🔄", texto: "Ausentes", query: "Clientes sumidas" }
+              ].map((btn, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    setAiResponse(askAI(btn.query));
+                    setAiQuery("");
+                  }}
+                  style={{
+                    padding: "8px",
+                    backgroundColor: modernTheme.primaryLight,
+                    border: `1px solid ${primaryColor}40`,
+                    borderRadius: modernTheme.radiusTiny,
+                    cursor: "pointer",
+                    fontSize: "11px",
+                    fontWeight: "600",
+                    color: modernTheme.text,
+                    transition: "all 0.2s ease"
+                  }}
+                >
+                  {btn.icon} {btn.texto}
+                </button>
+              ))}
+            </div>
+          </div>
+          <style>
+            {`
+              @keyframes slideInRight {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+              }
+            `}
+          </style>
+        </div>
+      )}
+
+      {/* ========== MODAIS DE AGENDAMENTO E PAGAMENTO ========== */}
+      {showModal && (
+        <div style={modalOverlay}>
+          <div style={{...modalContent, borderTop: `4px solid ${primaryColor}`}}>
+            <h3 style={{color: primaryColor}}>📅 {editAppId ? "Editar" : "Novo"} Agendamento</h3>
+            <input 
+              placeholder="🔍 Nome da cliente..." 
+              value={clientSearch} 
+              onChange={e => {setClientSearch(e.target.value); setSelCliente("");}} 
+              style={inputStyle} 
+            />
+            {clientSearch && !selCliente && (
+              <div style={dropdownStyle}>
+                {clients.filter(c => c.nome.toLowerCase().includes(clientSearch.toLowerCase())).slice(0, 5).map(c => (
+                  <div key={c.id} onClick={() => {setSelCliente(c.id); setClientSearch(c.nome)}} style={dropdownItem}>
+                    {c.nome}
+                  </div>
+                ))}
+              </div>
+            )}
+            <select value={selServico} onChange={e => setSelServico(e.target.value)} style={inputStyle}>
+              <option value="">Selecione o Serviço</option>
+              {services.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+            </select>
+            <button onClick={async () => {
+              const dFinal = new Date(selectedDate); dFinal.setHours(selHora, 0, 0, 0);
+              const d = { clientId: selCliente, serviceId: selServico, dataHora: dFinal.toISOString(), status: "pendente", tenantId: user.uid };
+              if(editAppId) await updateDoc(doc(db, "appointments", editAppId), d);
+              else await addDoc(collection(db, "appointments"), d);
+              setShowModal(false); loadData(user.uid);
+            }} style={{...btnStyle, backgroundColor: modernTheme.success}}>Confirmar</button>
+            <button onClick={() => setShowModal(false)} style={{...btnStyle, backgroundColor: "#ccc", marginTop: "10px"}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ========== ESTILOS E AUXILIARES (FORA DO APP) ==========
+const nomeMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+const calcTotal = (list, p) => {
+  const h = new Date().toLocaleDateString("pt-BR");
+  const m = new Date().getMonth();
+  return list.filter(t => {
+    const d = new Date(t.data);
+    return (p === "hoje" ? d.toLocaleDateString("pt-BR") === h : d.getMonth() === m) && t.tipo === "receita";
+  }).reduce((acc, c) => acc + c.valor, 0);
+};
+
+const inputStyle = { width: "100%", padding: "12px", marginBottom: "12px", borderRadius: "8px", border: "1px solid #ddd", boxSizing: "border-box" };
+const btnStyle = { width: "100%", padding: "14px", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "bold" };
+const cardStyle = { padding: "15px", borderRadius: "12px", marginBottom: "15px", backgroundColor: "#fff" };
+const itemStyle = { display: "flex", alignItems: "center", padding: "12px", borderBottom: "1px solid #eee" };
+const modalOverlay = { position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000 };
+const modalContent = { backgroundColor: "#fff", padding: "20px", borderRadius: "15px", width: "90%", maxWidth: "350px" };
+const dropdownStyle = { backgroundColor: "#fff", border: "1px solid #ddd", borderRadius: "8px", marginBottom: "10px" };
+const dropdownItem = { padding: "10px", cursor: "pointer", borderBottom: "1px solid #eee" };
+const labelStyle = { fontSize: "12px", fontWeight: "bold", display: "block", marginBottom: "5px" };
+const btnMini = { padding: "5px 10px", borderRadius: "5px", border: "none", cursor: "pointer" };
+const btnEdit = { backgroundColor: "#e3f2fd", color: "#2196f3", border: "none", padding: "5px", borderRadius: "4px", cursor: "pointer" };
+const btnDel = { backgroundColor: "#ffebee", color: "#f44336", border: "none", padding: "5px", borderRadius: "4px", cursor: "pointer", marginLeft: "5px" };
+const btnWhatsApp = { backgroundColor: "#e8f5e9", color: "#2e7d32", border: "none", padding: "5px", borderRadius: "4px", cursor: "pointer", marginRight: "5px" };
+const btnPay = { backgroundColor: "#fff3e0", color: "#ef6c00", border: "none", padding: "5px", borderRadius: "4px", cursor: "pointer", marginRight: "5px" };
+const btnLetter = (active) => ({ padding: "5px", minWidth: "25px", backgroundColor: active ? "#d81b60" : "#eee", color: active ? "#fff" : "#000", border: "none", borderRadius: "4px", cursor: "pointer" });
