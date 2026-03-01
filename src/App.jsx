@@ -704,68 +704,49 @@ export default function App() {
     }
   }
 
-  async function loadProfile(uid) {
-    try {
-      if (!uid) return;
-      const docRef = doc(db, "profiles", uid);
-      const docSnap = await getDoc(docRef);
+ // ========== CARREGAR PERFIL ==========
+async function loadProfile(uid) {
+  try {
+    if (!uid) return;
+    const docRef = doc(db, "profiles", uid);
+    const docSnap = await getDoc(docRef);
 
-      if (docSnap.exists()) {
-        const data = docSnap.data();
+    if (docSnap.exists()) {
+      const data = docSnap.data();
 
-        // 1. Estados Simples
-        setNomeEmpresa(data.nomeEmpresa || "");
-        setLogoUrl(data.logoUrl || "");
-        setTelefoneProfissional(data.telefoneProfissional || "");
-        setHorarioAbertura(data.horarioAbertura || "09:00");
-        setHorarioFechamento(data.horarioFechamento || "19:00");
-        setFidelidadeLimit(data.fidelidadeLimit || 10);
-        setPrimaryColor(data.primaryColor || "#d81b60");
+      // 1. Estados Simples
+      setNomeEmpresa(data.nomeEmpresa || "");
+      setLogoUrl(data.logoUrl || "");
+      setTelefoneProfissional(data.telefoneProfissional || "");
+      setHorarioAbertura(data.horarioAbertura || "09:00");
+      setHorarioFechamento(data.horarioFechamento || "19:00");
+      setFidelidadeLimit(data.fidelidadeLimit || 10);
+      setPrimaryColor(data.primaryColor || "#d81b60");
 
-        // 2. Dados do SaaS (Sinal e Pagamentos)
-        setChavePix(data.chavePix || "");
-        setLinkCartao(data.linkCartao || "");
-        setPorcentagemSinal(data.porcentagemSinal || 30);
-        setTermosUso(data.termosUso || "O não comparecimento implica na perda do sinal.");
+      // 2. 🆕 Dados do SaaS (Sinal e Pagamentos)
+      setChavePix(data.chavePix || "");
+      setLinkCartao(data.linkCartao || "");
+      setPorcentagemSinal(data.porcentagemSinal || 30);
+      setTermosUso(data.termosUso || "O não comparecimento implica na perda do sinal.");
 
-        // 3. Tratamento da Grade de Horários (Cérebro da Agenda)
-        const gradeTratada = data.gradeHorarios || {};
-        for (let i = 0; i < 7; i++) {
-          if (!gradeTratada[i]) {
-            gradeTratada[i] = { aberta: false, horas: [] };
-          }
-          if (!gradeTratada[i].horas) {
-            gradeTratada[i].horas = [];
-          }
+      // 3. Tratamento da Grade de Horários (Cérebro da Agenda)
+      const gradeTratada = data.gradeHorarios || {};
+      for (let i = 0; i < 7; i++) {
+        if (!gradeTratada[i]) {
+          gradeTratada[i] = { aberta: false, tipo: "janela", horas: [] };
         }
-
-        setGradeHorarios(gradeTratada);
-        setProfile({ id: uid, ...data });
-      }
-    } catch (error) {
-      console.error("Erro ao carregar perfil:", error);
-    }
-  }
-        // 🆕 CARREGAR DADOS DO SaaS
-        setChavePix(data.chavePix || "");
-        setLinkCartao(data.linkCartao || "");
-        setPorcentagemSinal(data.porcentagemSinal || 30);
-        setTermosUso(data.termosUso || "O não comparecimento implica na perda do sinal...");
-        
-        setGradeHorarios(data.gradeHorarios || { 
-          0: { aberta: false }, 1: { aberta: false }, 2: { aberta: true }, 
-          3: { aberta: true }, 4: { aberta: true }, 5: { aberta: true }, 
-          6: { aberta: true, tipo: "fixo", horas: [7, 9] } 
+        if (!gradeTratada[i].horas) {
+          gradeTratada[i].horas = [];
         }
       }
-     catch (error) { 
-      console.error("Erro ao carregar perfil:", error); 
-    }
-  }
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !user) return;
+      setGradeHorarios(gradeTratada);
+      setProfile({ id: uid, ...data });
+    }
+  } catch (error) {
+    console.error("Erro ao carregar perfil:", error);
+  }
+}
 
     setUploadingLogo(true);
     try {
