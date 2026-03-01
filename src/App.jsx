@@ -63,37 +63,38 @@ function PaginaAgendamentoCliente({ tenantId }) {
   };
 
   const getHorariosDisponiveis = () => {
-    if (!selectedDate || !selectedService) return [];
+  if (!selectedDate || !selectedService || !profile) return [];
 
-    const horaInicio = parseInt(profile?.horarioAbertura?.split(":")[0]) || 8;
-    const horaFim = parseInt(profile?.horarioFechamento?.split(":")[0]) || 19;
-    const duracao = selectedService.duracao || 60;
-    const horarios = [];
+  const diaSemana = selectedDate.getDay();
+  const configDia = profile.gradeHorarios?.[diaSemana];
 
-    for (let hora = horaInicio; hora < horaFim; hora++) {
-      const dataComparacao = new Date(selectedDate);
-      dataComparacao.setHours(hora, 0, 0, 0);
+  // Se o dia estiver fechado ou não tiver horas selecionadas pela Cris, retorna vazio
+  if (!configDia?.aberta || !configDia?.horas || configDia.horas.length === 0) return [];
 
-      // Verifica se já passou
-      if (dataComparacao < new Date()) continue;
+  return configDia.horas.filter(hora => {
+    const dataComparacao = new Date(selectedDate);
+    dataComparacao.setHours(hora, 0, 0, 0);
 
-      // Verifica se há conflito com outro agendamento
-      const temConflito = appointments.some(a => {
-        const inicio = new Date(a.dataHora);
-        const serv = services.find(s => s.id === a.serviceId);
-        const dMin = serv ? Number(serv.duracao) : 60;
-        const hInicio = inicio.getHours();
-        const hFim = hInicio + (inicio.getMinutes() + dMin) / 60;
-        return hora >= hInicio && hora < Math.ceil(hFim) && inicio.toDateString() === selectedDate.toDateString();
-      });
+    // 1. Não mostra horas que já passaram (se a cliente estiver olhando para hoje)
+    if (dataComparacao < new Date()) return false;
 
-      if (!temConflito) {
-        horarios.push(hora);
-      }
-    }
+    // 2. Verifica conflito com agendamentos já existentes
+    const temConflito = appointments.some(a => {
+      const inicio = new Date(a.dataHora);
+      const serv = services.find(s => s.id === a.serviceId);
+      const dMin = serv ? Number(serv.duracao) : 60;
+      
+      const hInicio = inicio.getHours();
+      // Calcula o fim do serviço para evitar sobreposição
+      const hFim = hInicio + (inicio.getMinutes() + dMin) / 60;
+      
+      return inicio.toDateString() === selectedDate.toDateString() && 
+             hora >= hInicio && hora < Math.ceil(hFim);
+    });
 
-    return horarios;
-  };
+    return !temConflito;
+  });
+};
 
   const handleConfirmarAgendamento = async () => {
     if (!clientName.trim() || !clientPhone.trim()) {
@@ -603,14 +604,14 @@ export default function App() {
   const [editingProfile, setEditingProfile] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [gradeHorarios, setGradeHorarios] = useState({
-    0: { aberta: false, tipo: "janela" },
-    1: { aberta: false, tipo: "janela" },
-    2: { aberta: true, tipo: "janela" },
-    3: { aberta: true, tipo: "janela" },
-    4: { aberta: true, tipo: "janela" },
-    5: { aberta: true, tipo: "janela" },
-    6: { aberta: true, tipo: "fixo", horas: [7, 9] }
-  });
+  0: { aberta: false, horas: [] }, // Domingo
+  1: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] }, // Segunda
+  2: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] }, // Terça
+  3: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] }, // Quarta
+  4: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] }, // Quinta
+  5: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] }, // Sexta
+  6: { aberta: false, horas: [] }  // Sábado
+});
 
   const [importingCSV, setImportingCSV] = useState(false);
   const [nomeProduto, setNomeProduto] = useState("");
@@ -1917,26 +1918,67 @@ ${appointments.map(a => {
                     placeholder="Ex: O não comparecimento implica na perda do sinal..."
                   />
 
-                  <label style={labelStyle}>⚙️ Dias de Atendimento</label>
-                  <div style={{ display: "grid", gap: "8px", marginBottom: "15px" }}>
-                    {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"].map((nome, index) => (
-                      <div key={index} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", border: `1px solid ${primaryColor}20`, borderRadius: modernTheme.radius, backgroundColor: gradeHorarios[index].aberta ? primaryColor + "10" : modernTheme.card }}>
-                        <span style={{fontSize: "13px", fontWeight: "bold", color: modernTheme.text}}>{nome}</span>
-                        <div style={{ display: "flex", gap: "8px" }}>
-                          <button onClick={() => setGradeHorarios({...gradeHorarios, [index]: {...gradeHorarios[index], aberta: !gradeHorarios[index].aberta}})}
-                            style={{ padding: "6px 12px", fontSize: "11px", backgroundColor: gradeHorarios[index].aberta ? modernTheme.success : modernTheme.textMuted, color: "white", border: "none", borderRadius: modernTheme.radiusTiny, cursor: "pointer", fontWeight: "bold", transition: "all 0.2s ease" }}>
-                            {gradeHorarios[index].aberta ? "✅ ABERTO" : "❌ FECHADO"}
-                          </button>
-                          {gradeHorarios[index].aberta && (
-                            <select value={gradeHorarios[index].tipo || "janela"} onChange={(e) => setGradeHorarios({...gradeHorarios, [index]: {...gradeHorarios[index], tipo: e.target.value, horas: e.target.value === "fixo" ? [7,9] : []}})} style={{fontSize: "11px", padding: "6px 8px", borderRadius: modernTheme.radiusTiny, border: `1px solid ${primaryColor}`, backgroundColor: modernTheme.card, cursor: "pointer", fontWeight: "500"}}>
-                              <option value="janela">Normal</option>
-                              <option value="fixo">7h e 9h</option>
-                            </select>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  {/* Edição de Horários por dia */}
+<label style={labelStyle}>⚙️ Configurar Horários Disponíveis</label>
+<div style={{ display: "grid", gap: "10px", marginBottom: "20px" }}>
+  {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"].map((nome, index) => (
+    <div key={index} style={{ 
+      padding: "15px", 
+      border: `1px solid ${primaryColor}20`, 
+      borderRadius: modernTheme.radius,
+      backgroundColor: gradeHorarios[index].aberta ? "#fff" : "#f1f1f1" 
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+        <strong style={{ color: modernTheme.text }}>{nome}</strong>
+        <button 
+          onClick={() => setGradeHorarios({...gradeHorarios, [index]: {...gradeHorarios[index], aberta: !gradeHorarios[index].aberta}})}
+          style={{ 
+            padding: "5px 10px", 
+            fontSize: "11px", 
+            backgroundColor: gradeHorarios[index].aberta ? modernTheme.success : "#ccc",
+            color: "white", border: "none", borderRadius: "4px", cursor: "pointer" 
+          }}
+        >
+          {gradeHorarios[index].aberta ? "ABERTO" : "FECHADO"}
+        </button>
+      </div>
+
+      {gradeHorarios[index].aberta && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
+          {[7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].map(h => {
+            const isSelected = gradeHorarios[index].horas?.includes(h);
+            return (
+              <button
+                key={h}
+                onClick={() => {
+                  let novasHoras = gradeHorarios[index].horas || [];
+                  if (isSelected) {
+                    novasHoras = novasHoras.filter(item => item !== h);
+                  } else {
+                    novasHoras = [...novasHoras, h].sort((a, b) => a - b);
+                  }
+                  setGradeHorarios({...gradeHorarios, [index]: {...gradeHorarios[index], horas: novasHoras}});
+                }}
+                style={{
+                  padding: "6px",
+                  fontSize: "10px",
+                  borderRadius: "4px",
+                  border: `1px solid ${primaryColor}`,
+                  backgroundColor: isSelected ? primaryColor : "transparent",
+                  color: isSelected ? "white" : primaryColor,
+                  cursor: "pointer",
+                  minWidth: "40px"
+                }}
+              >
+                {h}:00
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  ))}
+</div>
 
                   <button onClick={handleSaveProfile} style={{...btnStyle, background: `linear-gradient(135deg, ${modernTheme.success}, ${modernTheme.success}dd)`, marginBottom: "8px"}}>💾 Salvar Alterações</button>
                   <button onClick={() => setEditingProfile(false)} style={{...btnStyle, backgroundColor: modernTheme.textMuted, color: modernTheme.card}}>❌ Cancelar</button>
