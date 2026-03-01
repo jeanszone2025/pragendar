@@ -756,7 +756,7 @@ export default function App() {
           0: { aberta: false }, 1: { aberta: false }, 2: { aberta: true }, 
           3: { aberta: true }, 4: { aberta: true }, 5: { aberta: true }, 
           6: { aberta: true, tipo: "fixo", horas: [7, 9] } 
-        });
+        }
       }
      catch (error) { 
       console.error("Erro ao carregar perfil:", error); 
