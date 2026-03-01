@@ -10,14 +10,548 @@ import {
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, auth, storage } from "./firebase";
 
+// ========== COMPONENTE: PÁGINA DE AGENDAMENTO PARA CLIENTES ==========
+function PaginaAgendamentoCliente({ tenantId }) {
+  const [profile, setProfile] = useState(null);
+  const [services, setServices] = useState([]);
+  const [selectedService, setSelectedService] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedTime, setSelectedTime] = useState(null);
+  const [clientName, setClientName] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [step, setStep] = useState(1); // 1: Serviço, 2: Data/Hora, 3: Confirmação, 4: Pagamento
+  const [appointments, setAppointments] = useState([]);
+
+  const modernTheme = {
+    primary: profile?.primaryColor || "#d81b60",
+    background: "#f8f9fa",
+    card: "#ffffff",
+    text: "#2d3436",
+    textLight: "#636e72",
+    shadow: "0 4px 15px rgba(0,0,0,0.08)",
+    radius: "12px"
+  };
+
+  useEffect(() => {
+    loadPublicProfile();
+  }, [tenantId]);
+
+  const loadPublicProfile = async () => {
+    try {
+      const docRef = doc(db, "profiles", tenantId);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        setProfile(docSnap.data());
+
+        const qS = await getDocs(query(collection(db, "services"), where("tenantId", "==", tenantId)));
+        setServices(qS.docs.map(d => ({ id: d.id, ...d.data() })));
+
+        const qA = await getDocs(query(collection(db, "appointments"), where("tenantId", "==", tenantId)));
+        setAppointments(qA.docs.map(d => ({ id: d.id, ...d.data() })));
+      } else {
+        alert("❌ Profissional não encontrado!");
+      }
+    } catch (error) {
+      console.error("Erro ao carregar perfil:", error);
+      alert("❌ Erro ao carregar dados");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getHorariosDisponiveis = () => {
+    if (!selectedDate || !selectedService) return [];
+
+    const horaInicio = parseInt(profile?.horarioAbertura?.split(":")[0]) || 8;
+    const horaFim = parseInt(profile?.horarioFechamento?.split(":")[0]) || 19;
+    const duracao = selectedService.duracao || 60;
+    const horarios = [];
+
+    for (let hora = horaInicio; hora < horaFim; hora++) {
+      const dataComparacao = new Date(selectedDate);
+      dataComparacao.setHours(hora, 0, 0, 0);
+
+      // Verifica se já passou
+      if (dataComparacao < new Date()) continue;
+
+      // Verifica se há conflito com outro agendamento
+      const temConflito = appointments.some(a => {
+        const inicio = new Date(a.dataHora);
+        const serv = services.find(s => s.id === a.serviceId);
+        const dMin = serv ? Number(serv.duracao) : 60;
+        const hInicio = inicio.getHours();
+        const hFim = hInicio + (inicio.getMinutes() + dMin) / 60;
+        return hora >= hInicio && hora < Math.ceil(hFim) && inicio.toDateString() === selectedDate.toDateString();
+      });
+
+      if (!temConflito) {
+        horarios.push(hora);
+      }
+    }
+
+    return horarios;
+  };
+
+  const handleConfirmarAgendamento = async () => {
+    if (!clientName.trim() || !clientPhone.trim()) {
+      alert("❌ Preencha nome e telefone!");
+      return;
+    }
+
+    const dataHora = new Date(selectedDate);
+    dataHora.setHours(selectedTime, 0, 0, 0);
+
+    try {
+      await addDoc(collection(db, "appointments"), {
+        clientId: `temp_${Date.now()}`,
+        clientName: clientName,
+        clientPhone: clientPhone,
+        clientEmail: clientEmail,
+        serviceId: selectedService.id,
+        dataHora: dataHora.toISOString(),
+        status: "pendente",
+        tenantId: tenantId,
+        signalPaid: false,
+        createdAt: serverTimestamp()
+      });
+
+      setStep(4); // Vai para pagamento
+    } catch (error) {
+      alert("❌ Erro ao confirmar: " + error.message);
+    }
+  };
+
+  const valorSinal = selectedService ? (selectedService.preco * (profile?.porcentagemSinal || 30)) / 100 : 0;
+  const valorTotal = selectedService ? selectedService.preco : 0;
+
+  if (loading) {
+    return <div style={{ textAlign: "center", padding: "40px", color: modernTheme.textLight }}>⏳ Carregando...</div>;
+  }
+
+  if (!profile) {
+    return <div style={{ textAlign: "center", padding: "40px", color: "red" }}>❌ Profissional não encontrado</div>;
+  }
+
+  return (
+    <div style={{ backgroundColor: modernTheme.background, minHeight: "100vh", padding: "20px", fontFamily: "sans-serif" }}>
+      {/* HEADER */}
+      <header style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        padding: "20px",
+        backgroundColor: modernTheme.card,
+        borderRadius: modernTheme.radius,
+        marginBottom: "20px",
+        boxShadow: modernTheme.shadow
+      }}>
+        {profile.logoUrl && (
+          <img src={profile.logoUrl} alt="Logo" style={{ width: "50px", height: "50px", borderRadius: "50%", objectFit: "cover" }} />
+        )}
+        <div>
+          <h1 style={{ margin: 0, color: modernTheme.text, fontSize: "20px", fontWeight: "800" }}>{profile.nomeEmpresa || "Agende seu Horário"}</h1>
+          <small style={{ color: modernTheme.textLight }}>Reserva 100% segura com confirmação automática</small>
+        </div>
+      </header>
+
+      {/* PASSO 1: ESCOLHER SERVIÇO */}
+      {step === 1 && (
+        <div style={{ maxWidth: "600px", margin: "0 auto" }}>
+          <h2 style={{ color: modernTheme.text, marginBottom: "15px" }}>1️⃣ Escolha o Serviço</h2>
+          {services.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "40px", color: modernTheme.textLight }}>Nenhum serviço disponível</div>
+          ) : (
+            services.map(s => (
+              <div
+                key={s.id}
+                onClick={() => { setSelectedService(s); setStep(2); }}
+                style={{
+                  padding: "15px",
+                  backgroundColor: modernTheme.card,
+                  border: `2px solid ${modernTheme.primary}20`,
+                  borderRadius: modernTheme.radius,
+                  cursor: "pointer",
+                  marginBottom: "10px",
+                  transition: "all 0.2s ease",
+                  boxShadow: modernTheme.shadow
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                  e.currentTarget.style.borderColor = modernTheme.primary;
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.borderColor = modernTheme.primary + "20";
+                }}
+              >
+                <strong style={{ color: modernTheme.text }}>{s.nome}</strong>
+                <br />
+                <small style={{ color: modernTheme.textLight }}>
+                  R$ {s.preco.toFixed(2)} • {s.duracao >= 60 ? `${Math.floor(s.duracao / 60)}h ${s.duracao % 60}min` : `${s.duracao}min`}
+                </small>
+                {s.descricao && <><br /><small style={{ color: modernTheme.textLight }}>{s.descricao}</small></>}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* PASSO 2: ESCOLHER DATA E HORA */}
+      {step === 2 && selectedService && (
+        <div style={{ maxWidth: "600px", margin: "0 auto" }}>
+          <h2 style={{ color: modernTheme.text, marginBottom: "15px" }}>2️⃣ Escolha Data e Hora</h2>
+
+          <label style={{ display: "block", marginBottom: "10px", fontWeight: "bold", color: modernTheme.text }}>📅 Data</label>
+          <input
+            type="date"
+            value={selectedDate ? selectedDate.toISOString().split("T")[0] : ""}
+            onChange={(e) => {
+              if (e.target.value) {
+                const [year, month, day] = e.target.value.split("-");
+                setSelectedDate(new Date(year, month - 1, day));
+              }
+            }}
+            min={new Date().toISOString().split("T")[0]}
+            style={{
+              width: "100%",
+              padding: "12px",
+              borderRadius: "8px",
+              border: `1px solid ${modernTheme.primary}40`,
+              marginBottom: "15px",
+              fontSize: "14px"
+            }}
+          />
+
+          {selectedDate && (
+            <>
+              <label style={{ display: "block", marginBottom: "10px", fontWeight: "bold", color: modernTheme.text }}>🕐 Horário</label>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px", marginBottom: "15px" }}>
+                {getHorariosDisponiveis().map(hora => (
+                  <button
+                    key={hora}
+                    onClick={() => setSelectedTime(hora)}
+                    style={{
+                      padding: "10px",
+                      backgroundColor: selectedTime === hora ? modernTheme.primary : modernTheme.card,
+                      color: selectedTime === hora ? "white" : modernTheme.text,
+                      border: `2px solid ${modernTheme.primary}40`,
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                      fontWeight: "bold",
+                      transition: "all 0.2s ease"
+                    }}
+                  >
+                    {String(hora).padStart(2, "0")}:00
+                  </button>
+                ))}
+              </div>
+
+              {selectedTime !== null && (
+                <button
+                  onClick={() => setStep(3)}
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    backgroundColor: modernTheme.primary,
+                    color: "white",
+                    border: "none",
+                    borderRadius: "8px",
+                    fontWeight: "bold",
+                    cursor: "pointer"
+                  }}
+                >
+                  ✅ Próximo Passo
+                </button>
+              )}
+            </>
+          )}
+
+          <button
+            onClick={() => setStep(1)}
+            style={{
+              width: "100%",
+              padding: "12px",
+              backgroundColor: modernTheme.textLight + "20",
+              color: modernTheme.text,
+              border: "none",
+              borderRadius: "8px",
+              fontWeight: "bold",
+              cursor: "pointer",
+              marginTop: "10px"
+            }}
+          >
+            ⬅️ Voltar
+          </button>
+        </div>
+      )}
+
+      {/* PASSO 3: DADOS DA CLIENTE */}
+      {step === 3 && selectedService && selectedDate && selectedTime !== null && (
+        <div style={{ maxWidth: "600px", margin: "0 auto" }}>
+          <h2 style={{ color: modernTheme.text, marginBottom: "15px" }}>3️⃣ Seus Dados</h2>
+
+          <input
+            placeholder="Nome Completo *"
+            value={clientName}
+            onChange={(e) => setClientName(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "12px",
+              borderRadius: "8px",
+              border: `1px solid ${modernTheme.primary}40`,
+              marginBottom: "12px",
+              fontSize: "14px",
+              boxSizing: "border-box"
+            }}
+          />
+
+          <input
+            placeholder="Telefone/WhatsApp *"
+            value={clientPhone}
+            onChange={(e) => setClientPhone(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "12px",
+              borderRadius: "8px",
+              border: `1px solid ${modernTheme.primary}40`,
+              marginBottom: "12px",
+              fontSize: "14px",
+              boxSizing: "border-box"
+            }}
+          />
+
+          <input
+            placeholder="E-mail (opcional)"
+            value={clientEmail}
+            onChange={(e) => setClientEmail(e.target.value)}
+            type="email"
+            style={{
+              width: "100%",
+              padding: "12px",
+              borderRadius: "8px",
+              border: `1px solid ${modernTheme.primary}40`,
+              marginBottom: "15px",
+              fontSize: "14px",
+              boxSizing: "border-box"
+            }}
+          />
+
+          {/* RESUMO */}
+          <div style={{
+            padding: "15px",
+            backgroundColor: modernTheme.primary + "10",
+            borderLeft: `4px solid ${modernTheme.primary}`,
+            borderRadius: "8px",
+            marginBottom: "15px"
+          }}>
+            <strong style={{ color: modernTheme.text }}>📋 Resumo da Reserva:</strong>
+            <p style={{ margin: "5px 0", color: modernTheme.text, fontSize: "14px" }}>
+              <strong>Serviço:</strong> {selectedService.nome}
+            </p>
+            <p style={{ margin: "5px 0", color: modernTheme.text, fontSize: "14px" }}>
+              <strong>Data/Hora:</strong> {selectedDate.toLocaleDateString("pt-BR")} às {String(selectedTime).padStart(2, "0")}:00
+            </p>
+            <p style={{ margin: "5px 0", color: modernTheme.text, fontSize: "14px" }}>
+              <strong>Valor Total:</strong> R$ {valorTotal.toFixed(2)}
+            </p>
+          </div>
+
+          {/* TERMOS DE USO */}
+          {profile.termosUso && (
+            <div style={{
+              padding: "12px",
+              backgroundColor: "#fff3cd",
+              border: "1px solid #ffc107",
+              borderRadius: "8px",
+              marginBottom: "15px",
+              fontSize: "12px",
+              color: "#856404",
+              maxHeight: "100px",
+              overflowY: "auto"
+            }}>
+              <strong>⚠️ Termos Importantes:</strong>
+              <p style={{ margin: "5px 0" }}>{profile.termosUso}</p>
+            </div>
+          )}
+
+          <button
+            onClick={() => handleConfirmarAgendamento()}
+            style={{
+              width: "100%",
+              padding: "12px",
+              backgroundColor: modernTheme.primary,
+              color: "white",
+              border: "none",
+              borderRadius: "8px",
+              fontWeight: "bold",
+              cursor: "pointer",
+              marginBottom: "10px"
+            }}
+          >
+            ✅ Confirmar e Pagar Sinal
+          </button>
+
+          <button
+            onClick={() => setStep(2)}
+            style={{
+              width: "100%",
+              padding: "12px",
+              backgroundColor: modernTheme.textLight + "20",
+              color: modernTheme.text,
+              border: "none",
+              borderRadius: "8px",
+              fontWeight: "bold",
+              cursor: "pointer"
+            }}
+          >
+            ⬅️ Voltar
+          </button>
+        </div>
+      )}
+
+      {/* PASSO 4: PAGAMENTO DO SINAL */}
+      {step === 4 && selectedService && (
+        <div style={{ maxWidth: "600px", margin: "0 auto" }}>
+          <h2 style={{ color: modernTheme.text, marginBottom: "15px" }}>4️⃣ Pague o Sinal</h2>
+
+          <div style={{
+            padding: "20px",
+            backgroundColor: modernTheme.primary,
+            color: "white",
+            borderRadius: modernTheme.radius,
+            marginBottom: "20px",
+            textAlign: "center"
+          }}>
+            <h3 style={{ margin: "0 0 10px 0" }}>Sinal Obrigatório</h3>
+            <p style={{ fontSize: "12px", margin: "5px 0" }}>({profile.porcentagemSinal || 30}% do valor total)</p>
+            <h1 style={{ margin: "10px 0 0 0", fontSize: "32px" }}>R$ {valorSinal.toFixed(2)}</h1>
+          </div>
+
+          <div style={{
+            padding: "15px",
+            backgroundColor: modernTheme.card,
+            border: `2px solid ${modernTheme.primary}40`,
+            borderRadius: modernTheme.radius,
+            marginBottom: "15px"
+          }}>
+            <strong style={{ color: modernTheme.text, display: "block", marginBottom: "10px" }}>📲 Escaneie o QR Code ou copie a chave PIX:</strong>
+            <div style={{
+              padding: "12px",
+              backgroundColor: modernTheme.primary + "10",
+              borderRadius: "8px",
+              wordBreak: "break-all",
+              fontFamily: "monospace",
+              color: modernTheme.text,
+              marginBottom: "10px"
+            }}>
+              {profile.chavePix || "❌ Chave PIX não cadastrada"}
+            </div>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(profile.chavePix || "");
+                alert("✅ Chave PIX copiada!");
+              }}
+              style={{
+                width: "100%",
+                padding: "10px",
+                backgroundColor: "#25D366",
+                color: "white",
+                border: "none",
+                borderRadius: "6px",
+                fontWeight: "bold",
+                cursor: "pointer"
+              }}
+            >
+              📋 Copiar Chave PIX
+            </button>
+          </div>
+
+          {/* INSTRUÇÕES */}
+          <div style={{
+            padding: "15px",
+            backgroundColor: "#e8f5e9",
+            border: "1px solid #4caf50",
+            borderRadius: "8px",
+            marginBottom: "15px",
+            fontSize: "13px",
+            color: "#2e7d32"
+          }}>
+            <strong>✅ Depois de pagar:</strong>
+            <p style={{ margin: "5px 0" }}>1️⃣ Envie o comprovante de pagamento no WhatsApp para: <strong>{profile.telefoneProfissional}</strong></p>
+            <p style={{ margin: "5px 0" }}>2️⃣ Você receberá uma confirmação automática</p>
+            <p style={{ margin: "5px 0" }}>3️⃣ Um dia antes, você recebe um lembrete</p>
+            <p style={{ margin: "5px 0" }}>4️⃣ Agende seu horário com confiança!</p>
+          </div>
+
+          {profile.linkCartao && (
+            <div style={{
+              padding: "15px",
+              backgroundColor: modernTheme.card,
+              border: `2px solid ${modernTheme.primary}40`,
+              borderRadius: modernTheme.radius,
+              marginBottom: "15px"
+            }}>
+              <strong style={{ color: modernTheme.text, display: "block", marginBottom: "10px" }}>💳 Prefere Cartão?</strong>
+              <a
+                href={profile.linkCartao}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-block",
+                  width: "100%",
+                  padding: "10px",
+                  backgroundColor: modernTheme.primary,
+                  color: "white",
+                  border: "none",
+                  borderRadius: "6px",
+                  fontWeight: "bold",
+                  cursor: "pointer",
+                  textAlign: "center",
+                  textDecoration: "none"
+                }}
+              >
+                💳 Pagar via Cartão
+              </a>
+            </div>
+          )}
+
+          <div style={{
+            padding: "12px",
+            backgroundColor: "#fff3cd",
+            border: "1px solid #ffc107",
+            borderRadius: "8px",
+            fontSize: "12px",
+            color: "#856404"
+          }}>
+            <strong>⚠️ Importante:</strong> O sinal garante sua reserva e NÃO é devolvido em caso de cancelamento. O restante é pago no dia do atendimento.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ========== COMPONENTE PRINCIPAL: APP DA PROFISSIONAL ==========
 export default function App() {
-  // ========== ESTADOS DE AUTENTICAÇÃO ==========
+  // ========== DETECTAR SE É CLIENTE OU PROFISSIONAL ==========
+  const urlParams = new URLSearchParams(window.location.search);
+  const tenantIdPublico = urlParams.get("p");
+
+  // Se tem parâmetro ?p=, mostra a página de agendamento para clientes
+  if (tenantIdPublico) {
+    return <PaginaAgendamentoCliente tenantId={tenantIdPublico} />;
+  }
+
+  // ========== CASO CONTRÁRIO, MOSTRA O PAINEL DA PROFISSIONAL ==========
+
   const [user, setUser] = useState(null);
   const [authTab, setAuthTab] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  // ========== ESTADOS DE DADOS PRINCIPAIS ==========
   const [tab, setTab] = useState("agenda");
   const [clients, setClients] = useState([]);
   const [services, setServices] = useState([]);
@@ -26,7 +560,6 @@ export default function App() {
   const [inventory, setInventory] = useState([]);
   const [profile, setProfile] = useState(null);
 
-  // ========== ESTADOS DE INTERFACE E CALENDÁRIO ==========
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMonth, setViewMonth] = useState(new Date().getMonth());
   const [viewYear, setViewYear] = useState(new Date().getFullYear());
@@ -34,7 +567,6 @@ export default function App() {
   const [selectedLetter, setSelectedLetter] = useState("");
   const alfabeto = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
-  // ========== ESTADOS DE MODAL E EDIÇÃO ==========
   const [showModal, setShowModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showClientHistoryModal, setShowClientHistoryModal] = useState(false);
@@ -47,7 +579,6 @@ export default function App() {
   const [editId, setEditId] = useState(null);
   const [selectedAppForPayment, setSelectedAppForPayment] = useState(null);
 
-  // ========== ESTADOS DE FORMULÁRIOS ==========
   const [nomeCliente, setNomeCliente] = useState("");
   const [telefone, setTelefone] = useState("");
   const [nomeServico, setNomeServico] = useState("");
@@ -63,7 +594,6 @@ export default function App() {
   const [tempoHoras, setTempoHoras] = useState(0);
   const [tempoMinutos, setTempoMinutos] = useState(30);
 
-  // ========== ESTADOS DO PERFIL ==========
   const [nomeEmpresa, setNomeEmpresa] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [telefoneProfissional, setTelefoneProfissional] = useState("");
@@ -82,24 +612,26 @@ export default function App() {
     6: { aberta: true, tipo: "fixo", horas: [7, 9] }
   });
 
-  // ========== ESTADOS CSV E ESTOQUE ==========
   const [importingCSV, setImportingCSV] = useState(false);
   const [nomeProduto, setNomeProduto] = useState("");
   const [qtdProduto, setQtdProduto] = useState("");
   const [alerta, setAlerta] = useState("");
   const [editProductId, setEditProductId] = useState(null);
 
-  // ========== SISTEMA DE TEMAS ==========
   const [primaryColor, setPrimaryColor] = useState("#d81b60");
 
-  // ========== 🤖 ESTADOS DA IA ASSISTENTE ==========
+  // ========== 🆕 ESTADOS PARA O SaaS (PAGAMENTO E TERMOS) ==========
+  const [chavePix, setChavePix] = useState("");
+  const [linkCartao, setLinkCartao] = useState("");
+  const [porcentagemSinal, setPorcentagemSinal] = useState(30);
+  const [termosUso, setTermosUso] = useState("O não comparecimento implica na perda do sinal. Cancelamentos devem ser feitos com 24h de antecedência.");
+
   const [showAI, setShowAI] = useState(false);
   const [aiQuery, setAiQuery] = useState("");
   const [aiResponse, setAiResponse] = useState("Olá! Sou sua Gerente Virtual. Pergunte sobre horários, clientes, financeiro ou estoque. ✨");
   const [aiChatHistory, setAiChatHistory] = useState([]);
   const [aiActionData, setAiActionData] = useState(null);
 
-  // ========== TEMA MODERNO (DINÂMICO COM CORES) ==========
   const modernTheme = {
     primary: primaryColor,
     primaryLight: primaryColor + "20",
@@ -120,7 +652,6 @@ export default function App() {
     info: "#2196f3"
   };
 
-  // ========== MONITORAMENTO DE AUTENTICAÇÃO ==========
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (loggedUser) => {
       setUser(loggedUser);
@@ -132,7 +663,6 @@ export default function App() {
     return unsub;
   }, []);
 
-  // ========== FUNÇÃO DE AUTENTICAÇÃO ==========
   const handleAuth = async (e) => {
     e.preventDefault();
     try {
@@ -148,7 +678,6 @@ export default function App() {
     }
   };
 
-  // ========== CARREGAR DADOS (FIRESTORE) ==========
   async function loadData(uid) {
     try {
       if (!uid) return;
@@ -172,7 +701,6 @@ export default function App() {
     }
   }
 
-  // ========== CARREGAR PERFIL ==========
   async function loadProfile(uid) {
     try {
       if (!uid) return;
@@ -189,6 +717,13 @@ export default function App() {
         setHorarioFechamento(data.horarioFechamento || "19:00");
         setFidelidadeLimit(data.fidelidadeLimit || 10);
         setPrimaryColor(data.primaryColor || "#d81b60");
+        
+        // 🆕 CARREGAR DADOS DO SaaS
+        setChavePix(data.chavePix || "");
+        setLinkCartao(data.linkCartao || "");
+        setPorcentagemSinal(data.porcentagemSinal || 30);
+        setTermosUso(data.termosUso || "O não comparecimento implica na perda do sinal...");
+        
         setGradeHorarios(data.gradeHorarios || { 
           0: { aberta: false }, 1: { aberta: false }, 2: { aberta: true }, 
           3: { aberta: true }, 4: { aberta: true }, 5: { aberta: true }, 
@@ -200,7 +735,6 @@ export default function App() {
     }
   }
 
-  // ========== UPLOAD DE LOGO ==========
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !user) return;
@@ -219,7 +753,6 @@ export default function App() {
     }
   };
 
-  // ========== IMPORTAÇÃO CSV ==========
   const handleCSVImport = async (e) => {
     const file = e.target.files[0];
     if (!file || !user) return;
@@ -293,7 +826,6 @@ export default function App() {
     reader.readAsText(file, "UTF-8");
   };
 
-  // ========== SALVAR PERFIL ==========
   const handleSaveProfile = async () => {
     try {
       if (!user) return;
@@ -308,6 +840,11 @@ export default function App() {
         fidelidadeLimit,
         gradeHorarios,
         primaryColor,
+        // 🆕 SALVAR DADOS DO SaaS
+        chavePix,
+        linkCartao,
+        porcentagemSinal: Number(porcentagemSinal),
+        termosUso,
         updatedAt: new Date().toISOString()
       }, { merge: true });
 
@@ -319,7 +856,6 @@ export default function App() {
     }
   };
 
-  // ========== LÓGICA DE BLOQUEIO DE HORÁRIOS ==========
   const getAppDoHorario = (hora) => {
     const dSel = new Date(selectedDate);
     return appointments.find(a => {
@@ -334,7 +870,6 @@ export default function App() {
     });
   };
 
-  // ========== GRÁFICOS DE FATURAMENTO ==========
   const getChartData = () => {
     const dinheiro = transactions.filter(t => t.formaPagamento === "dinheiro" && t.tipo === "receita").reduce((acc, t) => acc + t.valor, 0);
     const cartao = transactions.filter(t => t.formaPagamento === "cartao" && t.tipo === "receita").reduce((acc, t) => acc + t.valor, 0);
@@ -350,7 +885,6 @@ export default function App() {
     };
   };
 
-  // ========== HISTÓRICO DA CLIENTE ==========
   const getClientHistory = (clientId) => {
     const clientApps = appointments.filter(a => a.clientId === clientId);
     const appIds = clientApps.map(a => a.id);
@@ -364,7 +898,6 @@ export default function App() {
     };
   };
 
-  // ========== CONTAGEM DE FIDELIDADE ==========
   const getClientFidelity = (clientId) => {
     const paidApps = appointments.filter(a => a.clientId === clientId && a.status === "pago");
     const count = paidApps.length;
@@ -372,7 +905,6 @@ export default function App() {
     return { count, achieved, limit: fidelidadeLimit };
   };
 
-  // ========== CONTROLE DE ESTOQUE ==========
   const handleSaveProduct = async () => {
     if (!nomeProduto.trim() || !qtdProduto || !alerta) return alert("Preencha todos os campos");
     try {
@@ -402,7 +934,6 @@ export default function App() {
     }
   };
 
-  // ========== MODAL DE PAGAMENTO ==========
   const handlePaymentClick = (app) => {
     setSelectedAppForPayment(app);
     setFormaPagamento("pix");
@@ -435,7 +966,6 @@ export default function App() {
     }
   };
 
-  // ========== LEMBRETE WHATSAPP ==========
   const sendWhatsAppReminder = (app) => {
     const cli = clients.find(c => c.id === app.clientId);
     const serv = services.find(s => s.id === app.serviceId);
@@ -458,7 +988,6 @@ export default function App() {
     window.open(link, "_blank");
   };
 
-  // ========== 🆕 FUNÇÃO: COBRAR NO WHATSAPP (PARA A IA) ==========
   const sendCobrancaWhatsApp = (cliente) => {
     if (!cliente || !cliente.telefone) {
       alert("❌ Cliente não possui telefone cadastrado!");
@@ -475,7 +1004,6 @@ export default function App() {
     window.open(link, "_blank");
   };
 
-  // ========== SALVAR TRANSAÇÃO ==========
   const handleSaveTransaction = async () => {
     const d = { 
       descricao: descFin, 
@@ -495,11 +1023,10 @@ export default function App() {
       setFormaPagamento("pix");
       loadData(user.uid);
     } catch (error) {
-      alert("�� Erro ao salvar transação: " + error.message);
+      alert("❌ Erro ao salvar transação: " + error.message);
     }
   };
 
-  // ========== AUXILIARES ==========
   const getNome = (list, id) => list.find(i => i.id === id)?.nome || "---";
   const getTel = (list, id) => list.find(i => i.id === id)?.telefone || "";
 
@@ -514,7 +1041,6 @@ export default function App() {
     }
   };
 
-  // ========== IMPRESSÃO DE RELATÓRIO ==========
   const printReport = () => {
     const chart = getChartData();
     const dataAtual = new Date().toLocaleDateString("pt-BR");
@@ -574,7 +1100,6 @@ ${appointments.map(a => {
     win.document.close();
   };
 
-  // ========== 🤖 FUNÇÃO DA IA ASSISTENTE COM AÇÕES RÁPIDAS ==========
   const askAI = (pergunta) => {
     const p = pergunta.toLowerCase().trim();
     let resposta = "";
@@ -681,7 +1206,6 @@ ${appointments.map(a => {
     return resposta;
   };
 
-  // ========== RENDERIZAÇÃO CONDICIONAL - TELA DE LOGIN ==========
   if (!user) {
     return (
       <div style={{ 
@@ -697,7 +1221,7 @@ ${appointments.map(a => {
         background: `linear-gradient(135deg, ${modernTheme.background} 0%, ${primaryColor}10 100%)`
       }}>
         <h1 style={{ color: primaryColor, marginBottom: "10px", fontSize: "3rem", fontWeight: "800" }}>✨ Pragendar R$</h1>
-        <p style={{ color: modernTheme.textMuted, marginBottom: "40px", fontSize: "14px", fontWeight: "500" }}>Sistema Premium de Gestão de Agendamentos</p>
+        <p style={{ color: modernTheme.textMuted, marginBottom: "40px", fontSize: "14px", fontWeight: "500" }}>Sistema Premium de Gestão de Agendamentos + SaaS</p>
         <div style={{...cardStyle, width: "100%", maxWidth: "380px", boxShadow: modernTheme.shadowHeavy}}>
           <h3 style={{marginTop: 0, color: primaryColor}}>{authTab === "login" ? "🔐 Entrar" : "📝 Criar Conta"}</h3>
           <form onSubmit={handleAuth}>
@@ -729,11 +1253,9 @@ ${appointments.map(a => {
     );
   }
 
-  // ========== INTERFACE: APP PRINCIPAL ==========
   return (
     <div style={{ backgroundColor: modernTheme.background, minHeight: "100vh", paddingBottom: "100px", fontFamily: "sans-serif" }}>
       
-      {/* === HEADER PREMIUM === */}
       <header style={{ 
         display: "flex", 
         justifyContent: "space-between", 
@@ -781,7 +1303,6 @@ ${appointments.map(a => {
         </button>
       </header>
 
-      {/* === NAVEGAÇÃO ESTILO APP PREMIUM === */}
       <nav style={{ 
         display: "flex", 
         gap: "8px", 
@@ -1262,6 +1783,33 @@ ${appointments.map(a => {
                     <p style={{ margin: "5px 0", fontSize: "12px", color: modernTheme.textMuted }}>
                       🎁 Fidelidade: A cada {fidelidadeLimit} atendimentos
                     </p>
+                    {/* 🆕 EXIBIR LINK DA PÁGINA DE AGENDAMENTO */}
+                    <div style={{ marginTop: "15px", padding: "10px", backgroundColor: primaryColor + "20", borderRadius: "8px" }}>
+                      <strong style={{ color: primaryColor, display: "block", marginBottom: "5px" }}>🔗 Sua Página de Agendamento:</strong>
+                      <small style={{ color: modernTheme.text, wordBreak: "break-all" }}>
+                        {window.location.origin}?p={user?.uid || "seu-id"}
+                      </small>
+                      <br />
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(`${window.location.origin}?p=${user?.uid || "seu-id"}`);
+                          alert("✅ Link copiado para a área de transferência!");
+                        }}
+                        style={{
+                          marginTop: "8px",
+                          padding: "6px 12px",
+                          backgroundColor: primaryColor,
+                          color: "white",
+                          border: "none",
+                          borderRadius: "6px",
+                          cursor: "pointer",
+                          fontSize: "11px",
+                          fontWeight: "bold"
+                        }}
+                      >
+                        📋 Copiar Link
+                      </button>
+                    </div>
                   </div>
                   <button onClick={() => setEditingProfile(true)} style={{...btnStyle, background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}dd)`, marginBottom: "8px"}}>✏️ Editar Perfil</button>
                   <button onClick={printReport} style={{...btnStyle, background: `linear-gradient(135deg, ${modernTheme.warning}, ${modernTheme.warning}dd)`}}>🖨️ Imprimir Relatório</button>
@@ -1332,6 +1880,41 @@ ${appointments.map(a => {
                     value={fidelidadeLimit}
                     onChange={e => setFidelidadeLimit(Number(e.target.value))}
                     style={inputStyle}
+                  />
+
+                  {/* 🆕 CAMPOS SaaS PARA PAGAMENTO */}
+                  <label style={labelStyle}>📲 Chave PIX (para clientes pagarem sinal)</label>
+                  <input 
+                    placeholder="Ex: seu-email@gmail.com ou CPF ou número de telefone" 
+                    value={chavePix} 
+                    onChange={e => setChavePix(e.target.value)} 
+                    style={inputStyle} 
+                  />
+
+                  <label style={labelStyle}>💳 Link de Pagamento por Cartão (Stripe, Asaas, etc.)</label>
+                  <input 
+                    placeholder="Ex: https://pay.stripe.com/..." 
+                    value={linkCartao} 
+                    onChange={e => setLinkCartao(e.target.value)} 
+                    style={inputStyle} 
+                  />
+
+                  <label style={labelStyle}>% Sinal do Agendamento</label>
+                  <input 
+                    type="number" 
+                    min="0" 
+                    max="100" 
+                    value={porcentagemSinal} 
+                    onChange={e => setPorcentagemSinal(Number(e.target.value))} 
+                    style={inputStyle} 
+                  />
+
+                  <label style={labelStyle}>⚠️ Termos de Uso (aparecem na página de agendamento)</label>
+                  <textarea 
+                    value={termosUso} 
+                    onChange={e => setTermosUso(e.target.value)} 
+                    style={{...inputStyle, height: "80px", resize: "none"}} 
+                    placeholder="Ex: O não comparecimento implica na perda do sinal..."
                   />
 
                   <label style={labelStyle}>⚙️ Dias de Atendimento</label>
@@ -1459,7 +2042,7 @@ ${appointments.map(a => {
             flexDirection: "column",
             gap: "12px"
           }}>
-            {/* PRIMEIRA MENSAGEM (Resposta Inicial) */}
+            {/* PRIMEIRA MENSAGEM */}
             <div style={{
               backgroundColor: modernTheme.primaryLight,
               padding: "12px",
@@ -1615,389 +2198,3 @@ ${appointments.map(a => {
                 onChange={(e) => setAiQuery(e.target.value)}
                 onKeyPress={(e) => {
                   if (e.key === 'Enter' && aiQuery.trim()) {
-                    setAiResponse(askAI(aiQuery));
-                    setAiQuery("");
-                  }
-                }}
-                style={{ 
-                  flex: 1,
-                  padding: "10px",
-                  borderRadius: modernTheme.radiusTiny,
-                  border: `1px solid ${primaryColor}40`,
-                  fontSize: "12px",
-                  fontFamily: "inherit"
-                }}
-              />
-              <button 
-                onClick={() => {
-                  if (aiQuery.trim()) {
-                    setAiResponse(askAI(aiQuery));
-                    setAiQuery("");
-                  }
-                }}
-                style={{
-                  padding: "10px 14px",
-                  backgroundColor: primaryColor,
-                  color: "white",
-                  border: "none",
-                  borderRadius: modernTheme.radiusTiny,
-                  cursor: "pointer",
-                  fontSize: "14px",
-                  fontWeight: "bold",
-                  transition: "all 0.2s ease"
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.opacity = "0.9";
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.opacity = "1";
-                }}
-              >
-                📤
-              </button>
-            </div>
-
-            {/* SUGESTÕES RÁPIDAS */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
-              {[
-                { icon: "📅", texto: "Hoje", query: "Meus horários hoje" },
-                { icon: "💰", texto: "Caixa", query: "Meu financeiro" },
-                { icon: "👥", texto: "Clientes", query: "Quantos clientes tenho" },
-                { icon: "🔄", texto: "Ausentes", query: "Clientes sumidas" }
-              ].map((btn, i) => (
-                <button
-                  key={i}
-                  onClick={() => {
-                    setAiResponse(askAI(btn.query));
-                    setAiQuery("");
-                  }}
-                  style={{
-                    padding: "8px",
-                    backgroundColor: modernTheme.primaryLight,
-                    border: `1px solid ${primaryColor}40`,
-                    borderRadius: modernTheme.radiusTiny,
-                    cursor: "pointer",
-                    fontSize: "11px",
-                    fontWeight: "600",
-                    color: modernTheme.text,
-                    transition: "all 0.2s ease"
-                  }}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.backgroundColor = primaryColor;
-                    e.currentTarget.style.color = "white";
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.backgroundColor = modernTheme.primaryLight;
-                    e.currentTarget.style.color = modernTheme.text;
-                  }}
-                >
-                  {btn.icon} {btn.texto}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Animação de entrada */}
-          <style>
-            {`
-              @keyframes slideInRight {
-                from {
-                  transform: translateX(100%);
-                  opacity: 0;
-                }
-                to {
-                  transform: translateX(0);
-                  opacity: 1;
-                }
-              }
-            `}
-          </style>
-        </div>
-      )}
-
-      {/* === MODAIS === */}
-      {showModal && (
-        <div style={modalOverlay}>
-          <div style={{...modalContent, boxShadow: modernTheme.shadowHeavy, borderTop: `4px solid ${primaryColor}`}}>
-            <h3 style={{color: primaryColor, marginTop: 0}}>📅 {editAppId ? "Editar" : "Novo"} Agendamento {String(selHora).padStart(2, "0")}:00</h3>
-            <div style={{position:"relative"}}>
-              <input placeholder="🔍 Nome da cliente..." value={clientSearch} onChange={e => {setClientSearch(e.target.value); setSelCliente("");}} style={inputStyle} />
-              {clientSearch && !selCliente && (
-                <div style={dropdownStyle}>
-                  {clients.filter(c => c.nome.toLowerCase().includes(clientSearch.toLowerCase())).slice(0, 5).map(c => (
-                    <div key={c.id} onClick={() => {setSelCliente(c.id); setClientSearch(c.nome)}} style={{...dropdownItem, cursor: "pointer", borderLeft: `3px solid ${primaryColor}`}}>
-                      {c.nome} <small style={{color: modernTheme.textMuted}}>({c.telefone})</small>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <select value={selServico} onChange={e => setSelServico(e.target.value)} style={inputStyle}>
-              <option value="">Selecione o Serviço</option>
-              {services.map(s => <option key={s.id} value={s.id}>{s.nome} (R${s.preco.toFixed(2)})</option>)}
-            </select>
-            <button onClick={async () => {
-              if(!selCliente || !selServico) return alert("Selecione Cliente e Serviço!");
-              const dFinal = new Date(selectedDate); dFinal.setHours(selHora, 0, 0, 0);
-              const d = { clientId: selCliente, serviceId: selServico, dataHora: dFinal.toISOString(), status: "pendente", tenantId: user.uid };
-              try {
-                if(editAppId) await updateDoc(doc(db, "appointments", editAppId), d);
-                else await addDoc(collection(db, "appointments"), d);
-                setShowModal(false); loadData(user.uid);
-              } catch (error) {
-                alert("❌ Erro: " + error.message);
-              }
-            }} style={{...btnStyle, background: `linear-gradient(135deg, ${modernTheme.success}, ${modernTheme.success}dd)`}}>✅ Confirmar</button>
-            <button onClick={() => setShowModal(false)} style={{...btnStyle, backgroundColor: modernTheme.textMuted, color: modernTheme.card, marginTop:"8px"}}>❌ Cancelar</button>
-          </div>
-        </div>
-      )}
-
-      {showPaymentModal && selectedAppForPayment && (
-        <div style={modalOverlay}>
-          <div style={{...modalContent, boxShadow: modernTheme.shadowHeavy, borderTop: `4px solid ${primaryColor}`}}>
-            <h3 style={{color: primaryColor, marginTop: 0}}>💳 Confirmar Pagamento</h3>
-            <div style={{textAlign:"center", marginBottom:"15px", padding: "12px", backgroundColor: modernTheme.primaryLight, borderRadius: modernTheme.radius, borderLeft: `4px solid ${primaryColor}`}}>
-              <p style={{margin:"5px 0", fontWeight: "bold", color: modernTheme.text}}>{getNome(clients, selectedAppForPayment.clientId)}</p>
-              <p style={{margin:"5px 0", fontSize:"13px", color: modernTheme.textLight, fontWeight: "600"}}>
-                {getNome(services, selectedAppForPayment.serviceId)} - R${services.find(s => s.id === selectedAppForPayment.serviceId)?.preco.toFixed(2) || "0.00"}
-              </p>
-            </div>
-            
-            <label style={labelStyle}>💳 Forma de Pagamento</label>
-            <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} style={inputStyle}>
-              <option value="dinheiro">💵 Dinheiro</option>
-              <option value="cartao">💳 Cartão</option>
-              <option value="pix">📲 Pix</option>
-            </select>
-
-            <button onClick={confirmPayment} style={{...btnStyle, background: `linear-gradient(135deg, ${modernTheme.success}, ${modernTheme.success}dd)`, marginBottom: "8px"}}>✅ Receber Pagamento</button>
-            <button onClick={() => setShowPaymentModal(false)} style={{...btnStyle, backgroundColor: modernTheme.textMuted, color: modernTheme.card}}>❌ Cancelar</button>
-          </div>
-        </div>
-      )}
-
-      {showClientHistoryModal && selectedClientForHistory && (() => {
-        const history = getClientHistory(selectedClientForHistory.id);
-        const fidelity = getClientFidelity(selectedClientForHistory.id);
-        return (
-          <div style={modalOverlay}>
-            <div style={{...modalContent, maxHeight:"80vh", overflowY:"auto", boxShadow: modernTheme.shadowHeavy, borderTop: `4px solid ${primaryColor}`}}>
-              <h3 style={{color: primaryColor, marginTop: 0}}>📂 Histórico de {selectedClientForHistory.nome}</h3>
-              <p style={{fontSize:"12px", color: modernTheme.textLight, fontWeight: "600"}}>
-                📞 {selectedClientForHistory.telefone}
-              </p>
-              
-              <div style={{...cardStyle, backgroundColor: modernTheme.primaryLight, borderLeft: `4px solid ${primaryColor}`, boxShadow: "none", marginBottom: "15px"}}>
-                <p style={{margin:"5px 0", fontSize: "13px"}}><strong style={{color: modernTheme.text}}>Total Gasto:</strong> <span style={{color: primaryColor, fontSize: "16px", fontWeight: "bold"}}>R$ {history.totalGasto.toFixed(2)}</span></p>
-                <p style={{margin:"5px 0", fontSize: "13px"}}><strong style={{color: modernTheme.text}}>Atendimentos:</strong> <span style={{fontWeight: "bold", color: primaryColor}}>{history.count}</span></p>
-                <p style={{margin:"5px 0", fontSize: "13px", color: fidelity.achieved ? modernTheme.warning : modernTheme.textMuted}}>
-                  <strong style={{color: modernTheme.text}}>Fidelidade:</strong> <span style={{fontWeight: "bold"}}>{fidelity.count}/{fidelity.limit}</span> {fidelity.achieved && "🎁 Prêmio atingido!"}
-                </p>
-              </div>
-
-              <h4 style={{marginTop: "15px", marginBottom: "10px", color: modernTheme.text, fontSize: "13px", fontWeight: "bold"}}>Agendamentos Registrados:</h4>
-              {history.apps.length > 0 ? history.apps.map(a => {
-                const serv = services.find(s => s.id === a.serviceId);
-                return (
-                  <div key={a.id} style={{...itemStyle, fontSize:"12px", borderRadius: modernTheme.radiusTiny, marginBottom: "8px", borderLeft: `3px solid ${a.status === "pago" ? modernTheme.success : modernTheme.warning}`}}>
-                    <span style={{flex:1}}>
-                      <strong style={{color: modernTheme.text}}>{new Date(a.dataHora).toLocaleDateString("pt-BR")} às {String(new Date(a.dataHora).getHours()).padStart(2, "0")}:00</strong><br/>
-                      {serv?.nome}<br/>
-                      <small style={{color: a.status === "pago" ? modernTheme.success : modernTheme.warning, fontWeight:"bold"}}>Status: {a.status === "pago" ? "✅ Pago" : "⏳ Pendente"}</small>
-                    </span>
-                    <strong style={{color: modernTheme.success}}>R$ {serv?.preco.toFixed(2)}</strong>
-                  </div>
-                );
-              }) : <p style={{fontSize:"12px", color: modernTheme.textMuted, textAlign: "center", padding: "15px"}}>Nenhum agendamento registrado</p>}
-
-              <button onClick={() => setShowClientHistoryModal(false)} style={{...btnStyle, backgroundColor: modernTheme.textMuted, color: modernTheme.card, marginTop:"10px"}}>Fechar</button>
-            </div>
-          </div>
-        );
-      })()}
-    </div>
-  );
-}
-
-// ========== NOMES DOS MESES ==========
-const nomeMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-
-// ========== FUNÇÕES AUXILIARES ==========
-const calcTotal = (list, p) => {
-  const h = new Date().toLocaleDateString("pt-BR");
-  const m = new Date().getMonth();
-  return list.filter(t => {
-    const d = new Date(t.data);
-    return (p === "hoje" ? d.toLocaleDateString("pt-BR") === h : d.getMonth() === m) && t.tipo === "receita";
-  }).reduce((acc, c) => acc + c.valor, 0);
-};
-
-// ========== ESTILOS CENTRALIZADOS ==========
-const inputStyle = { 
-  width: "100%", 
-  padding: "12px", 
-  marginBottom: "12px", 
-  borderRadius: "8px", 
-  border: "1px solid #e0e0e0",
-  boxSizing: "border-box", 
-  fontSize: "14px",
-  fontFamily: "inherit",
-  transition: "all 0.3s ease"
-};
-
-const labelStyle = { 
-  fontSize: "12px", 
-  fontWeight: "bold", 
-  display: "block", 
-  marginBottom: "6px",
-  color: "#2d3436",
-  textTransform: "uppercase",
-  letterSpacing: "0.5px"
-};
-
-const btnStyle = { 
-  width: "100%", 
-  padding: "14px", 
-  color: "white", 
-  border: "none", 
-  borderRadius: "8px", 
-  cursor: "pointer", 
-  fontWeight: "bold", 
-  fontSize: "14px",
-  transition: "all 0.3s ease",
-  boxShadow: "0 4px 12px rgba(0,0,0,0.1)"
-};
-
-const btnMini = { 
-  padding: "8px 14px", 
-  backgroundColor: "#eee", 
-  border: "none", 
-  borderRadius: "6px", 
-  cursor: "pointer", 
-  fontSize: "12px",
-  fontWeight: "600",
-  transition: "all 0.2s ease"
-};
-
-const itemStyle = { 
-  display: "flex", 
-  alignItems: "center", 
-  padding: "12px", 
-  borderBottom: "1px solid #eee", 
-  fontSize: "13px", 
-  backgroundColor: "#fff"
-};
-
-const cardStyle = { 
-  padding: "15px", 
-  borderRadius: "12px", 
-  marginBottom: "15px", 
-  border: "none",
-  backgroundColor: "#fff"
-};
-
-const modalOverlay = { 
-  position: "fixed", 
-  top: 0, 
-  left: 0, 
-  width: "100%", 
-  height: "100%", 
-  backgroundColor: "rgba(0,0,0,0.5)", 
-  display: "flex", 
-  justifyContent: "center", 
-  alignItems: "center", 
-  zIndex: 1000
-};
-
-const modalContent = { 
-  backgroundColor: "#fff", 
-  padding: "20px", 
-  borderRadius: "15px", 
-  width: "90%", 
-  maxWidth: "350px"
-};
-
-const dropdownStyle = { 
-  position: "absolute", 
-  top: "50px", 
-  left: 0, 
-  width: "100%", 
-  backgroundColor: "#fff", 
-  border: "1px solid #ccc", 
-  zIndex: 10, 
-  maxHeight: "150px", 
-  overflowY: "auto", 
-  borderRadius: "8px",
-  boxShadow: "0 4px 12px rgba(0,0,0,0.1)"
-};
-
-const dropdownItem = { 
-  padding: "10px 12px", 
-  borderBottom: "1px solid #eee", 
-  fontSize: "13px"
-};
-
-const btnPay = { 
-  backgroundColor: "#4caf50", 
-  color: "#fff", 
-  border: "none", 
-  borderRadius: "6px", 
-  padding: "6px 10px", 
-  marginLeft: "5px", 
-  cursor: "pointer", 
-  fontSize: "12px", 
-  fontWeight: "bold",
-  transition: "all 0.2s ease"
-};
-
-const btnWhatsApp = { 
-  backgroundColor: "#25D366", 
-  color: "#fff", 
-  border: "none", 
-  borderRadius: "6px", 
-  padding: "6px 10px", 
-  marginLeft: "5px", 
-  cursor: "pointer", 
-  fontSize: "12px", 
-  fontWeight: "bold",
-  transition: "all 0.2s ease"
-};
-
-const btnDel = { 
-  backgroundColor: "#ffcdd2", 
-  color: "#c62828", 
-  border: "none", 
-  borderRadius: "6px", 
-  padding: "6px 10px", 
-  marginLeft: "5px", 
-  cursor: "pointer", 
-  fontSize: "12px", 
-  fontWeight: "bold",
-  transition: "all 0.2s ease"
-};
-
-const btnEdit = { 
-  backgroundColor: "#e1f5fe", 
-  color: "#0277bd", 
-  border: "none", 
-  borderRadius: "6px", 
-  padding: "6px 10px", 
-  cursor: "pointer", 
-  fontSize: "12px", 
-  fontWeight: "bold",
-  transition: "all 0.2s ease"
-};
-
-const btnLetter = (active) => ({ 
-  padding: "5px 8px", 
-  minWidth: "28px", 
-  fontSize: "10px", 
-  backgroundColor: active ? "#d81b60" : "#f0f0f0", 
-  color: active ? "white" : "#333", 
-  border: "1px solid #ddd", 
-  borderRadius: "4px", 
-  cursor: "pointer",
-  fontWeight: active ? "bold" : "500",
-  transition: "all 0.2s ease"
-});
