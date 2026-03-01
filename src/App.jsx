@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { 
   collection, getDocs, addDoc, deleteDoc, updateDoc, 
   doc, query, where, setDoc, getDoc, writeBatch, serverTimestamp 
@@ -536,6 +537,7 @@ function PaginaAgendamentoCliente({ tenantId }) {
 }
 
 // ========== COMPONENTE PRINCIPAL: APP DA PROFISSIONAL ==========
+const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_KEY);
 export default function App() {
   // ========== DETECTAR SE É CLIENTE OU PROFISSIONAL ==========
   const urlParams = new URLSearchParams(window.location.search);
@@ -708,17 +710,39 @@ export default function App() {
       const docRef = doc(db, "profiles", uid);
       const docSnap = await getDoc(docRef);
 
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setProfile({ id: uid, ...data });
-        setNomeEmpresa(data.nomeEmpresa || "");
-        setLogoUrl(data.logoUrl || "");
-        setTelefoneProfissional(data.telefoneProfissional || "");
-        setHorarioAbertura(data.horarioAbertura || "09:00");
-        setHorarioFechamento(data.horarioFechamento || "19:00");
-        setFidelidadeLimit(data.fidelidadeLimit || 10);
-        setPrimaryColor(data.primaryColor || "#d81b60");
-        
+      // ... dentro do if (docSnap.exists()) ...
+const data = docSnap.data();
+
+// 1. Carrega os estados simples
+setNomeEmpresa(data.nomeEmpresa || "");
+setLogoUrl(data.logoUrl || "");
+setTelefoneProfissional(data.telefoneProfissional || "");
+setHorarioAbertura(data.horarioAbertura || "09:00");
+setHorarioFechamento(data.horarioFechamento || "19:00");
+setFidelidadeLimit(data.fidelidadeLimit || 10);
+setPrimaryColor(data.primaryColor || "#d81b60");
+setChavePix(data.chavePix || "");
+setLinkCartao(data.linkCartao || "");
+setPorcentagemSinal(data.porcentagemSinal || 30);
+setTermosUso(data.termosUso || "");
+
+// 2. TRATAMENTO DA GRADE DE HORÁRIOS (O "Cérebro" da Agenda)
+const gradeTratada = data.gradeHorarios || {};
+
+for (let i = 0; i < 7; i++) {
+  // Se o dia não existir no banco, cria o padrão "fechado"
+  if (!gradeTratada[i]) {
+    gradeTratada[i] = { aberta: false, horas: [] };
+  }
+  // GARANTIA: Se o dia existir mas não tiver o array de horas, cria ele vazio
+  if (!gradeTratada[i].horas) {
+    gradeTratada[i].horas = [];
+  }
+}
+
+// 3. Atualiza o estado com a grade bonitinha
+setGradeHorarios(gradeTratada);
+setProfile({ id: uid, ...data });
         // 🆕 CARREGAR DADOS DO SaaS
         setChavePix(data.chavePix || "");
         setLinkCartao(data.linkCartao || "");
@@ -1101,110 +1125,91 @@ ${appointments.map(a => {
     win.document.close();
   };
 
-  const askAI = (pergunta) => {
-    const p = pergunta.toLowerCase().trim();
-    let resposta = "";
-    let acoes = null;
+  const askAI = async (pergunta) => {
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    if (p.includes("hoje") && (p.includes("agenda") || p.includes("horário") || p.includes("atendimento"))) {
-      const hoje = appointments.filter(a => {
-        const dataApp = new Date(a.dataHora);
-        const dataHoje = new Date();
-        return dataApp.toLocaleDateString() === dataHoje.toLocaleDateString();
-      });
+  // 1. Criamos um "Resumo" do que está acontecendo no salão para a IA ler
+  const dadosDoSalao = `
+    Contexto do Salão ${nomeEmpresa}:
+    - Clientes cadastrados: ${clients.length}
+    - Serviços: ${services.map(s => s.nome + " (R$" + s.preco + ")").join(", ")}
+    - Agendamentos hoje: ${appointments.filter(a => new Date(a.dataHora).toLocaleDateString() === new Date().toLocaleDateString()).length}
+    - Faturamento total do mês: R$ ${getChartData().total}
+    - Produtos em nível crítico: ${inventory.filter(p => Number(p.quantidade) <= Number(p.alertaCritico)).map(p => p.nome).join(", ")}
+  `;
+
+  try {
+    // 2. O Gemini lê os dados e responde a pergunta da Cris
+    const prompt = `Você é a Gerente Virtual do salão da Cris. 
+    Use os dados abaixo para responder a pergunta de forma curta e amigável.
+    
+    ${dadosDoSalao}
+    
+    Pergunta da Cris: "${pergunta}"`;
+
+    const result = await model.generateContent(prompt);
+    const respostaIA = result.response.text();
+
+    setAiChatHistory([...aiChatHistory, { pergunta, resposta: respostaIA, timestamp: new Date() }]);
+    setAiResponse(respostaIA);
+    return respostaIA;
+
+  } catch (error) {
+    console.error("Erro na IA:", error);
+    return "Ops, tive um pequeno curto-circuito. Pode perguntar de novo?";
+  }
+};
+
+  const processAgendaImage = async (file) => {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    const imageData = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result.split(',')[1]);
+      reader.readAsDataURL(file);
+    });
+
+    const prompt = `Analise esta foto de uma agenda de papel. 
+      Extraia: Nome da Cliente, Serviço e Horário. 
+      Retorne APENAS um JSON no formato: 
+      [{"nome": "Maria", "servico": "Corte", "hora": 14, "data": "2026-03-01"}] 
+      Se não entender algo, ignore. Use a data de hoje como padrão se não houver data.`;
+
+    try {
+      const result = await model.generateContent([
+        prompt,
+        { inlineData: { data: imageData, mimeType: file.type } }
+      ]);
       
-      if (hoje.length === 0) {
-        resposta = "🎉 Sua agenda de hoje está livre! Você tem tempo para descansar ou agendar novas clientes.";
-      } else {
-        const horarios = hoje.map(a => {
-          const cli = clients.find(c => c.id === a.clientId);
-          const serv = services.find(s => s.id === a.serviceId);
-          const h = new Date(a.dataHora).getHours();
-          const m = String(new Date(a.dataHora).getMinutes()).padStart(2, "0");
-          return `${h}:${m} - ${cli?.nome} (${serv?.nome})`;
-        }).join("\n");
-        resposta = `📅 Sua agenda de hoje:\n\n${horarios}\n\nTotal: ${hoje.length} atendimentos`;
-      }
-    }
-    else if (p.includes("financeiro") || p.includes("faturamento") || p.includes("ganhei") || p.includes("receita")) {
-      const chart = getChartData();
-      resposta = `💰 Resumo Financeiro:\n\nTotal Recebido: R$ ${chart.total}\n\n💵 Dinheiro: R$ ${chart.valores.dinheiro.toFixed(2)} (${chart.dinheiro}%)\n💳 Cartão: R$ ${chart.valores.cartao.toFixed(2)} (${chart.cartao}%)\n📲 Pix: R$ ${chart.valores.pix.toFixed(2)} (${chart.pix}%)`;
-    }
-    else if (p.includes("fiel") || p.includes("prêmio") || p.includes("fidelidade")) {
-      const fiéis = clients.filter(c => getClientFidelity(c.id).achieved);
-      if (fiéis.length === 0) {
-        resposta = "Nenhuma cliente atingiu o prêmio de fidelidade ainda.";
-      } else {
-        resposta = `🎁 Clientes que ganharam Prêmio (${fiéis.length}):\n\n${fiéis.map(c => `✨ ${c.nome}`).join("\n")}`;
-      }
-    }
-    else if (p.includes("sumida") || p.includes("ausente") || p.includes("voltou") || p.includes("retomar")) {
-      const hoje = new Date();
-      const sumidas = clients.filter(c => {
-        const history = getClientHistory(c.id);
-        if (history.count === 0) return false;
-        const ultimaData = new Date(history.apps[0].dataHora);
-        const diasPassados = (hoje - ultimaData) / (1000 * 60 * 60 * 24);
-        return diasPassados > 30;
-      });
+      const rawResponse = result.response.text();
+      const cleanJson = rawResponse.replace(/```json|```/g, "");
+      const appointmentsFound = JSON.parse(cleanJson);
 
-      if (sumidas.length === 0) {
-        resposta = "🎉 Todas as suas clientes estão engajadas! Nenhuma está sumida há mais de 30 dias.";
-      } else {
-        resposta = `⚠️ Clientes que não retornam há 30+ dias (${sumidas.length}):\n\n${sumidas.slice(0, 5).map(c => {
-          const history = getClientHistory(c.id);
-          const ultimaData = new Date(history.apps[0].dataHora);
-          const diasPassados = Math.floor((hoje - ultimaData) / (1000 * 60 * 60 * 24));
-          return `👤 ${c.nome} - Última vez: ${diasPassados} dias atrás`;
-        }).join("\n")}`;
-        acoes = { tipo: "sumidas", clientes: sumidas.slice(0, 5) };
-      }
-    }
-    else if (p.includes("quem é") || p.includes("dados de") || p.includes("história de") || p.includes("sobre a")) {
-      const nomeBusca = p.replace("quem é", "").replace("dados de", "").replace("história de", "").replace("sobre a", "").replace("sobre o", "").trim();
-      const cli = clients.find(c => c.nome.toLowerCase().includes(nomeBusca));
-      
-      if (!cli) {
-        resposta = `Não encontrei nenhuma cliente com o nome "${nomeBusca}". Tente de novo! 🔍`;
-      } else {
-        const history = getClientHistory(cli.id);
-        const fidelity = getClientFidelity(cli.id);
-        const ultimaVisita = history.count > 0 ? new Date(history.apps[0].dataHora).toLocaleDateString() : "Nunca";
-        
-        resposta = `📂 Perfil de ${cli.nome}:\n\n📞 Telefone: ${cli.telefone || "Não informado"}\n💰 Total Gasto: R$ ${history.totalGasto.toFixed(2)}\n📊 Atendimentos: ${history.count}\n🎁 Fidelidade: ${fidelity.count}/${fidelity.limit}\n📅 Última Visita: ${ultimaVisita}`;
-        acoes = { tipo: "cliente", cliente: cli };
-      }
-    }
-    else if (p.includes("estoque") || p.includes("produto") || p.includes("crítico")) {
-      const criticos = inventory.filter(prod => Number(prod.quantidade) <= Number(prod.alertaCritico));
-      if (criticos.length === 0) {
-        resposta = "✅ Seu estoque está ótimo! Nenhum produto em nível crítico.";
-      } else {
-        resposta = `⚠️ Produtos em Nível Crítico (${criticos.length}):\n\n${criticos.map(p => `🔴 ${p.nome}: ${p.quantidade} un. (Alerta: ${p.alertaCritico})`).join("\n")}`;
-      }
-    }
-    else if (p.includes("serviço") || p.includes("procedimento") || p.includes("qual é meu")) {
-      if (services.length === 0) {
-        resposta = "Você ainda não cadastrou nenhum serviço.";
-      } else {
-        resposta = `💇 Seus Serviços (${services.length}):\n\n${services.map(s => `🎯 ${s.nome} - R$ ${s.preco.toFixed(2)} (${s.duracao} min)`).join("\n")}`;
-      }
-    }
-    else if (p.includes("quantos clientes") || p.includes("total de clientes")) {
-      resposta = `👥 Total de Clientes: ${clients.length}\n\nClientes com pelo menos 1 atendimento: ${clients.filter(c => getClientHistory(c.id).count > 0).length}`;
-    }
-    else if (p.includes("hoje") && p.includes("faturou")) {
-      const hojeTotal = calcTotal(transactions, "hoje");
-      const mesTotal = calcTotal(transactions, "mes");
-      resposta = `📈 Faturamento:\n\nHoje: R$ ${hojeTotal.toFixed(2)}\nEste Mês: R$ ${mesTotal.toFixed(2)}`;
-    }
-    else {
-      resposta = `Pergunte sobre:\n\n• 📅 "Meus horários hoje"\n• 💰 "Meu financeiro"\n• 👥 "Dados da Maria"\n• 🔄 "Clientes sumidas"\n• 🎁 "Prêmio fidelidade"\n• 📦 "Estoque crítico"\n• 💇 "Meus serviços"\n\nOu seja mais específica! 😊`;
-    }
+      for (const app of appointmentsFound) {
+        const clienteExiste = clients.find(c => c.nome.toLowerCase().includes(app.nome.toLowerCase()));
+        let clientId = clienteExiste ? clienteExiste.id : `temp_${Date.now()}`;
 
-    setAiChatHistory([...aiChatHistory, { pergunta, resposta, acoes, timestamp: new Date() }]);
-    setAiActionData(acoes);
-    return resposta;
+        const dataFinal = new Date(app.data);
+        dataFinal.setHours(app.hora, 0, 0, 0);
+
+        await addDoc(collection(db, "appointments"), {
+          clientId,
+          clientName: app.nome,
+          serviceId: services[0]?.id || "", 
+          dataHora: dataFinal.toISOString(),
+          status: "pendente",
+          tenantId: user.uid,
+          source: "ia_foto"
+        });
+      }
+
+      setAiResponse(`✅ Encontrei ${appointmentsFound.length} agendamentos na foto e já salvei tudo!`);
+      loadData(user.uid);
+
+    } catch (error) {
+      setAiResponse("❌ Ops, não consegui ler bem a foto. Tente uma imagem mais nítida!");
+      console.error(error);
+    }
   };
 
   if (!user) {
@@ -2225,23 +2230,46 @@ ${appointments.map(a => {
           </div>
 
           {/* INPUT DE PERGUNTA */}
-          <div style={{ 
-            padding: "15px",
-            borderTop: `1px solid ${primaryColor}20`,
-            backgroundColor: "rgba(255,255,255,0.8)",
-            position: "sticky",
-            bottom: 0,
-            zIndex: 10
-          }}>
-            <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
-              <input 
-  placeholder="Pergunte sobre..."
+<div style={{ 
+  padding: "15px",
+  borderTop: `1px solid ${primaryColor}20`,
+  backgroundColor: "rgba(255,255,255,0.8)",
+  position: "sticky",
+  bottom: 0,
+  zIndex: 10
+}}>
+  <div style={{ display: "flex", gap: "8px", marginBottom: "8px", alignItems: "center" }}>
+    
+    {/* O BOTÃO DA CÂMERA AGORA DENTRO DO FLEX */}
+    <button 
+      onClick={() => document.getElementById('ai-photo-upload').click()}
+      style={{
+        padding: "10px",
+        backgroundColor: modernTheme.primaryLight,
+        border: `1px solid ${primaryColor}40`,
+        borderRadius: modernTheme.radiusTiny,
+        cursor: "pointer",
+        fontSize: "18px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center"
+      }}
+      title="Escanear Agenda Física"
+    >
+      📷
+    </button>
+
+    <input 
+  placeholder="Pergunte ou envie foto..."
   value={aiQuery}
   onChange={(e) => setAiQuery(e.target.value)}
-  onKeyPress={(e) => {
+  onKeyPress={async (e) => {
+    // Só dispara se apertar Enter e se o campo não estiver vazio
     if (e.key === 'Enter' && aiQuery.trim()) {
-      setAiResponse(askAI(aiQuery));
-      setAiQuery("");
+      const perguntaParaIA = aiQuery; 
+      setAiQuery(""); // Limpa o campo de texto na hora para a Cris ver que enviou
+      setAiResponse("🤖 Deixa eu ver aqui..."); // Dá um sinal de vida enquanto a IA pensa
+      await askAI(perguntaParaIA); // Chama o "Cérebro"
     }
   }}
   style={{ 
@@ -2253,28 +2281,46 @@ ${appointments.map(a => {
     fontFamily: "inherit"
   }}
 />
-              <button 
-                onClick={() => {
-                  if (aiQuery.trim()) {
-                    setAiResponse(askAI(aiQuery));
-                    setAiQuery("");
-                  }
-                }}
-                style={{
-                  padding: "10px 14px",
-                  backgroundColor: primaryColor,
-                  color: "white",
-                  border: "none",
-                  borderRadius: modernTheme.radiusTiny,
-                  cursor: "pointer",
-                  fontSize: "14px",
-                  fontWeight: "bold",
-                  transition: "all 0.2s ease"
-                }}
-              >
-                📤
-              </button>
-            </div>
+    
+    <button 
+      onClick={() => {
+        if (aiQuery.trim()) {
+          setAiResponse(askAI(aiQuery));
+          setAiQuery("");
+        }
+      }}
+      style={{
+        padding: "10px 14px",
+        backgroundColor: primaryColor,
+        color: "white",
+        border: "none",
+        borderRadius: modernTheme.radiusTiny,
+        cursor: "pointer",
+        fontSize: "14px",
+        fontWeight: "bold"
+      }}
+    >
+      📤
+    </button>
+  </div>
+  
+  {/* O INPUT DE ARQUIVO CONTINUA ESCONDIDO AQUI PERTO */}
+  <input 
+    type="file" 
+    id="ai-photo-upload" 
+    accept="image/*" 
+    style={{ display: "none" }} 
+    onChange={async (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        setAiResponse("⏳ Analisando sua agenda física... Só um instante.");
+        await processAgendaImage(file);
+      }
+    }}
+  />
+
+  {/* SUGESTÕES RÁPIDAS ABAIXO... */}
+</div>
 
             {/* SUGESTÕES RÁPIDAS */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
