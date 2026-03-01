@@ -2193,26 +2193,24 @@ ${appointments.map(a => {
           }}>
             <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
               <input 
-                placeholder="Pergunte sobre..."
-                value={aiQuery}
-                onChange={(e) => setAiQuery(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter' && aiQuery.trim()) {
-                    onKeyPress={(e) => {
-                  if (e.key === 'Enter' && aiQuery.trim()) {
-                    setAiResponse(askAI(aiQuery));
-                    setAiQuery("");
-                  }
-                }}
-                style={{ 
-                  flex: 1,
-                  padding: "10px",
-                  borderRadius: modernTheme.radiusTiny,
-                  border: `1px solid ${primaryColor}40`,
-                  fontSize: "12px",
-                  fontFamily: "inherit"
-                }}
-              />
+  placeholder="Pergunte sobre..."
+  value={aiQuery}
+  onChange={(e) => setAiQuery(e.target.value)}
+  onKeyPress={(e) => {
+    if (e.key === 'Enter' && aiQuery.trim()) {
+      setAiResponse(askAI(aiQuery));
+      setAiQuery("");
+    }
+  }}
+  style={{ 
+    flex: 1,
+    padding: "10px",
+    borderRadius: modernTheme.radiusTiny,
+    border: `1px solid ${primaryColor}40`,
+    fontSize: "12px",
+    fontFamily: "inherit"
+  }}
+/>
               <button 
                 onClick={() => {
                   if (aiQuery.trim()) {
