@@ -1,19 +1,20 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth"; // ADICIONADO
+import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
 
+// Aqui dizemos ao Firebase para buscar os valores seguros que você vai salvar no Render
 const firebaseConfig = {
-  apiKey: "AIzaSyCWFrcEYq6aL-J7dvL-u9poWywDO5WnIgA",
-  authDomain: "pragendar-6222f.firebaseapp.com",
-  projectId: "pragendar-6222f",
-  storageBucket: "pragendar-6222f.firebasestorage.app",
-  messagingSenderId: "452462951656",
-  appId: "1:452462951656:web:221463b3e7cae0ddde9d5d"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 const app = initializeApp(firebaseConfig);
 
 export const db = getFirestore(app);
-export const auth = getAuth(app); // ADICIONADO
+export const auth = getAuth(app);
 export const storage = getStorage(app);
