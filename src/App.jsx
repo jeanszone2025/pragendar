@@ -537,7 +537,7 @@ function PaginaAgendamentoCliente({ tenantId }) {
 }
 
 // ========== COMPONENTE PRINCIPAL: APP DA PROFISSIONAL ==========
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_KEY);
+const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_KEY || "AI_KEY_TESTE");
 export default function App() {
   // ========== DETECTAR SE É CLIENTE OU PROFISSIONAL ==========
   const urlParams = new URLSearchParams(window.location.search);
