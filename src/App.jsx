@@ -2322,7 +2322,7 @@ ${appointments.map(a => {
                 <button
                   key={i}
                   onClick={() => {
-                    setAiResponse(askAI(btn.query));
+                    askAI(btn.query);
                     setAiQuery("");
                   }}
                   style={{
@@ -2342,12 +2342,14 @@ ${appointments.map(a => {
               ))}
             </div>
           </div>
-         <style dangerouslySetInnerHTML={{ __html: `
-  @keyframes slideInRight {
-    from { transform: translateX(100%); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
-  }
-` }} />
+          
+          {/* O ESTILO DEVE FICAR DENTRO DO COMPONENTE MAS FORA DO MAP */}
+          <style dangerouslySetInnerHTML={{ __html: `
+            @keyframes slideInRight {
+              from { transform: translateX(100%); opacity: 0; }
+              to { transform: translateX(0); opacity: 1; }
+            }
+          `}} />
         </div>
       )}
 
