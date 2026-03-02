@@ -2342,14 +2342,12 @@ ${appointments.map(a => {
               ))}
             </div>
           </div>
-          <style>
-            {`
-              @keyframes slideInRight {
-                from { transform: translateX(100%); opacity: 0; }
-                to { transform: translateX(0); opacity: 1; }
-              }
-            `}
-          </style>
+         <style dangerouslySetInnerHTML={{ __html: `
+  @keyframes slideInRight {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+` }} />
         </div>
       )}
 
