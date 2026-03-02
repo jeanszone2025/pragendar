@@ -784,23 +784,19 @@ async function loadProfile(uid) {
         let batch = writeBatch(db);
         let batchCount = 0;
 
-        // Começamos do 1 para pular o cabeçalho
         for (let i = 1; i < lines.length; i++) {
           try {
-            // Regex para separar por vírgula ou ponto-e-vírgula e remover aspas
-            const parts = lines[i].split(/[;,]/).map(item => item?.trim().replace(/^"|"$/g, ''));
+            const parts = lines[i].split(/[;,]/).map(item => item?.trim());
 
-            if (parts.length >= 1) {
-              // Pega as 3 primeiras colunas para formar o nome (padrão Google Contacts)
+            if (parts.length > 0) {
               const nomeCompleto = [parts[0], parts[1], parts[2]]
-                .filter(p => p && isNaN(p.replace(/\D/g, ""))) // Ignora colunas que são só números
+                .filter(Boolean)
                 .join(" ");
 
-              // Procura o telefone em qualquer coluna que tenha pelo menos 8 dígitos
-              let telefoneFinal = parts.find(p => p && p.replace(/\D/g, "").length >= 8) || "";
-              telefoneFinal = telefoneFinal.replace(/[^\d+]/g, ""); // Deixa só números e o +
+              let telefoneFinal = parts[3] || parts[4] || "";
+              telefoneFinal = telefoneFinal.replace(/[^\d+() -]/g, "");
 
-              if (nomeCompleto && nomeCompleto.length > 2) {
+              if (nomeCompleto && nomeCompleto !== "First Name Middle Name Last Name") {
                 const newRef = doc(collection(db, "clients"));
                 batch.set(newRef, {
                   nome: nomeCompleto,
@@ -812,12 +808,11 @@ async function loadProfile(uid) {
                 batchCount++;
                 totalCount++;
 
-                // A CADA 500 REGISTROS, ENVIA E RESPIRA (Evita erro do Firebase)
                 if (batchCount === 500) {
                   await batch.commit();
-                  batch = writeBatch(db); // Reinicia o lote
+                  batch = writeBatch(db);
                   batchCount = 0;
-                  console.log(`📡 Processados ${totalCount} contatos...`);
+                  console.log(`✅ ${totalCount} contatos processados...`);
                 }
               }
             }
@@ -826,13 +821,12 @@ async function loadProfile(uid) {
           }
         }
 
-        // Envia o resto (os últimos contatos que não chegaram a 500)
         if (batchCount > 0) {
           await batch.commit();
         }
 
         loadData(user.uid);
-        alert(`✅ Sucesso! ${totalCount} contatos importados para o seu banco de teste.`);
+        alert(`✅ Sucesso! ${totalCount} contatos importados com nomes completos.`);
       } catch (error) {
         alert("❌ Erro ao processar arquivo: " + error.message);
       } finally {
@@ -840,6 +834,7 @@ async function loadProfile(uid) {
         e.target.value = ""; 
       }
     };
+
     reader.readAsText(file, "UTF-8");
   };
 
@@ -1118,39 +1113,54 @@ ${appointments.map(a => {
   };
 
   const askAI = async (pergunta) => {
-    setAiResponse("🤖 Deixa eu ver aqui..."); // Feedback visual imediato
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    const dadosDoSalao = `Salão ${nomeEmpresa}. Clientes: ${clients.length}. Serviços: ${services.length}. Hoje: ${appointments.length} agendamentos.`;
+  // 1. Criamos um "Resumo" do que está acontecendo no salão para a IA ler
+  const dadosDoSalao = `
+    Contexto do Salão ${nomeEmpresa}:
+    - Clientes cadastrados: ${clients.length}
+    - Serviços: ${services.map(s => s.nome + " (R$" + s.preco + ")").join(", ")}
+    - Agendamentos hoje: ${appointments.filter(a => new Date(a.dataHora).toLocaleDateString() === new Date().toLocaleDateString()).length}
+    - Faturamento total do mês: R$ ${getChartData().total}
+    - Produtos em nível crítico: ${inventory.filter(p => Number(p.quantidade) <= Number(p.alertaCritico)).map(p => p.nome).join(", ")}
+  `;
 
-    try {
-      const prompt = `Você é a Gerente Virtual. Responda de forma curta e amigável.
-      DADOS: ${dadosDoSalao} | PERGUNTA: "${pergunta}"`;
+  try {
+    // 2. O Gemini lê os dados e responde a pergunta da Cris
+    const prompt = `Você é a Gerente Virtual do salão da Cris. 
+    Use os dados abaixo para responder a pergunta de forma curta e amigável.
+    
+    ${dadosDoSalao}
+    
+    Pergunta da Cris: "${pergunta}"`;
 
-      const result = await model.generateContent(prompt);
-      const respostaIA = result.response.text(); // Extrai o texto da resposta
+    const result = await model.generateContent(prompt);
+    const respostaIA = result.response.text();
 
-      // Atualiza o histórico para aparecer na barra lateral
-      setAiChatHistory(prev => [...prev, { pergunta, resposta: respostaIA, timestamp: new Date() }]);
-      setAiResponse(respostaIA);
-      return respostaIA;
-    } catch (error) {
-      console.error("Erro na IA:", error);
-      setAiResponse("⚠️ Tive um erro técnico. Verifique sua chave API no Render.");
-    }
-  };
+    setAiChatHistory([...aiChatHistory, { pergunta, resposta: respostaIA, timestamp: new Date() }]);
+    setAiResponse(respostaIA);
+    return respostaIA;
+
+  } catch (error) {
+    console.error("Erro na IA:", error);
+    return "Ops, tive um pequeno curto-circuito. Pode perguntar de novo?";
+  }
+};
 
   const processAgendaImage = async (file) => {
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
     const imageData = await new Promise((resolve) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve(reader.result.split(',')[1]);
       reader.readAsDataURL(file);
     });
 
-    const prompt = `Analise esta foto de uma agenda de manicure (Layout Cris). 
-      DICA: A hora está impressa à esquerda. O nome da cliente está escrito à mão no centro.
-      RETORNE APENAS JSON: [{"nome": "Nome", "hora": 14, "data": "2026-03-03"}]`;
+    const prompt = `Analise esta foto de uma agenda de papel. 
+      Extraia: Nome da Cliente, Serviço e Horário. 
+      Retorne APENAS um JSON no formato: 
+      [{"nome": "Maria", "servico": "Corte", "hora": 14, "data": "2026-03-01"}] 
+      Se não entender algo, ignore. Use a data de hoje como padrão se não houver data.`;
 
     try {
       const result = await model.generateContent([
@@ -1158,21 +1168,35 @@ ${appointments.map(a => {
         { inlineData: { data: imageData, mimeType: file.type } }
       ]);
       
-      const cleanJson = result.response.text().replace(/```json|```/g, "").trim();
-      const appsFound = JSON.parse(cleanJson);
+      const rawResponse = result.response.text();
+      const cleanJson = rawResponse.replace(/```json|```/g, "");
+      const appointmentsFound = JSON.parse(cleanJson);
 
-      for (const app of appsFound) {
+      for (const app of appointmentsFound) {
+        const clienteExiste = clients.find(c => c.nome.toLowerCase().includes(app.nome.toLowerCase()));
+        let clientId = clienteExiste ? clienteExiste.id : `temp_${Date.now()}`;
+
+        const dataFinal = new Date(app.data);
+        dataFinal.setHours(app.hora, 0, 0, 0);
+
         await addDoc(collection(db, "appointments"), {
+          clientId,
           clientName: app.nome,
-          dataHora: new Date(`${app.data}T${String(app.hora).padStart(2, '0')}:00:00`).toISOString(),
+          serviceId: services[0]?.id || "", 
+          dataHora: dataFinal.toISOString(),
           status: "pendente",
           tenantId: user.uid,
-          source: "foto_ia"
+          source: "ia_foto"
         });
       }
-      setAiResponse(`✅ Li a agenda! Adicionei ${appsFound.length} horários.`);
+
+      setAiResponse(`✅ Encontrei ${appointmentsFound.length} agendamentos na foto e já salvei tudo!`);
       loadData(user.uid);
-    } catch (e) { setAiResponse("❌ Erro ao ler foto. Tente mais nitidez."); }
+
+    } catch (error) {
+      setAiResponse("❌ Ops, não consegui ler bem a foto. Tente uma imagem mais nítida!");
+      console.error(error);
+    }
   };
 
   if (!user) {
@@ -2288,37 +2312,46 @@ ${appointments.map(a => {
           }}
         />
 
-  {/* SUBSTITUA O BLOCO DOS BOTÕES POR ESTE */}
-  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
-    {[
-      { icon: "📅", texto: "Hoje", query: "Quais são meus horários para hoje?" },
-      { icon: "💰", texto: "Caixa", query: "Quanto eu faturei este mês?" },
-      { icon: "👥", texto: "Clientes", query: "Quantos clientes eu tenho no total?" },
-      { icon: "🔄", texto: "Ausentes", query: "Quais clientes não aparecem há mais de 30 dias?" }
-    ].map((btn, i) => (
-      <button
-        key={i}
-        onClick={async () => {
-          setAiResponse("🤖 Deixa eu ver aqui..."); // Dá um sinal de vida imediato
-          await askAI(btn.query);
-          setAiQuery("");
-        }}
-        style={{
-          padding: "8px",
-          backgroundColor: modernTheme.primaryLight,
-          border: `1px solid ${primaryColor}40`,
-          borderRadius: modernTheme.radiusTiny,
-          cursor: "pointer",
-          fontSize: "11px",
-          fontWeight: "600",
-          color: modernTheme.text,
-          transition: "all 0.2s ease"
-        }}
-      >
-        {btn.icon} {btn.texto}
-      </button>
-    ))}
-  </div>
+  {/* SUGESTÕES RÁPIDAS */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+              {[
+                { icon: "📅", texto: "Hoje", query: "Meus horários hoje" },
+                { icon: "💰", texto: "Caixa", query: "Meu financeiro" },
+                { icon: "👥", texto: "Clientes", query: "Quantos clientes tenho" },
+                { icon: "🔄", texto: "Ausentes", query: "Clientes sumidas" }
+              ].map((btn, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    askAI(btn.query);
+                    setAiQuery("");
+                  }}
+                  style={{
+                    padding: "8px",
+                    backgroundColor: modernTheme.primaryLight,
+                    border: `1px solid ${primaryColor}40`,
+                    borderRadius: modernTheme.radiusTiny,
+                    cursor: "pointer",
+                    fontSize: "11px",
+                    fontWeight: "600",
+                    color: modernTheme.text,
+                    transition: "all 0.2s ease"
+                  }}
+                >
+                  {btn.icon} {btn.texto}
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          <style dangerouslySetInnerHTML={{ __html: `
+            @keyframes slideInRight {
+              from { transform: translateX(100%); opacity: 0; }
+              to { transform: translateX(0); opacity: 1; }
+            }
+          ` }} />
+        </div>
+      )}
 
       {/* ========== MODAIS DE AGENDAMENTO E PAGAMENTO ========== */}
       {showModal && (
