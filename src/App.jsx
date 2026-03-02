@@ -624,10 +624,11 @@ export default function App() {
   const [primaryColor, setPrimaryColor] = useState("#d81b60");
 
   // ========== 🆕 ESTADOS PARA O SaaS (PAGAMENTO E TERMOS) ==========
-  const [chavePix, setChavePix] = useState("");
-  const [linkCartao, setLinkCartao] = useState("");
-  const [porcentagemSinal, setPorcentagemSinal] = useState(30);
-  const [termosUso, setTermosUso] = useState("O não comparecimento implica na perda do sinal. Cancelamentos devem ser feitos com 24h de antecedência.");
+  // ========== 🆕 ESTADOS DO SaaS (SINAL E PAGAMENTOS) ==========
+const [chavePix, setChavePix] = useState("");
+const [linkCartao, setLinkCartao] = useState("");
+const [porcentagemSinal, setPorcentagemSinal] = useState(30);
+const [termosUso, setTermosUso] = useState("O não comparecimento implica na perda do sinal. Cancelamentos devem ser feitos com 24h de antecedência.");
 
   const [showAI, setShowAI] = useState(false);
   const [aiQuery, setAiQuery] = useState("");
@@ -747,6 +748,10 @@ async function loadProfile(uid) {
     console.error("Erro ao carregar perfil:", error);
   }
 }
+
+    const handleFileUpload = async (e) => { // <--- ESTE ASYNC É O QUE FALTA!
+    const file = e.target.files[0];
+    if (!file || !user) return;
 
     setUploadingLogo(true);
     try {
