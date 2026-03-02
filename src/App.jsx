@@ -2308,10 +2308,7 @@ ${appointments.map(a => {
     }}
   />
 
-  {/* SUGESTÕES RÁPIDAS ABAIXO... */}
-</div>
-
-            {/* SUGESTÕES RÁPIDAS */}
+  {/* SUGESTÕES RÁPIDAS */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
               {[
                 { icon: "📅", texto: "Hoje", query: "Meus horários hoje" },
@@ -2343,13 +2340,12 @@ ${appointments.map(a => {
             </div>
           </div>
           
-          {/* O ESTILO DEVE FICAR DENTRO DO COMPONENTE MAS FORA DO MAP */}
           <style dangerouslySetInnerHTML={{ __html: `
             @keyframes slideInRight {
               from { transform: translateX(100%); opacity: 0; }
               to { transform: translateX(0); opacity: 1; }
             }
-          `}} />
+          ` }} />
         </div>
       )}
 
