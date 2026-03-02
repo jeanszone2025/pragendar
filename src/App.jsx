@@ -2252,32 +2252,25 @@ ${appointments.map(a => {
   placeholder="Pergunte ou envie foto..."
   value={aiQuery}
   onChange={(e) => setAiQuery(e.target.value)}
-  onKeyPress={async (e) => {
-    // Só dispara se apertar Enter e se o campo não estiver vazio
-    if (e.key === 'Enter' && aiQuery.trim()) {
-      const perguntaParaIA = aiQuery; 
-      setAiQuery(""); // Limpa o campo de texto na hora para a Cris ver que enviou
-      setAiResponse("🤖 Deixa eu ver aqui..."); // Dá um sinal de vida enquanto a IA pensa
-      await askAI(perguntaParaIA); // Chama o "Cérebro"
-    }
-  }}
-  style={{ 
-    flex: 1,
-    padding: "10px",
-    borderRadius: modernTheme.radiusTiny,
-    border: `1px solid ${primaryColor}40`,
-    fontSize: "12px",
-    fontFamily: "inherit"
-  }}
-/>
-    
-    <button 
-      onClick={() => {
-        if (aiQuery.trim()) {
-          setAiResponse(askAI(aiQuery));
-          setAiQuery("");
-        }
-      }}
+  // No Input de texto (onKeyPress):
+onKeyPress={async (e) => {
+  if (e.key === 'Enter' && aiQuery.trim()) {
+    const pergunta = aiQuery;
+    setAiQuery("");
+    setAiResponse("🤖 Deixa eu ver aqui...");
+    await askAI(pergunta); // O 'await' é fundamental aqui!
+  }
+}}
+
+// No Botão de Enviar (onClick - o ícone 📤):
+onClick={async () => {
+  if (aiQuery.trim()) {
+    const pergunta = aiQuery;
+    setAiQuery("");
+    setAiResponse("🤖 Analisando...");
+    await askAI(pergunta); // Corrigido: antes estava setAiResponse(askAI(...)) que causava o crash
+  }
+}}
       style={{
         padding: "10px 14px",
         backgroundColor: primaryColor,
