@@ -2218,88 +2218,101 @@ ${appointments.map(a => {
             ))}
           </div>
 
-          {/* INPUT DE PERGUNTA */}
-<div style={{ 
-  padding: "15px",
-  borderTop: `1px solid ${primaryColor}20`,
-  backgroundColor: "rgba(255,255,255,0.8)",
-  position: "sticky",
-  bottom: 0,
-  zIndex: 10
-}}>
-  <div style={{ display: "flex", gap: "8px", marginBottom: "8px", alignItems: "center" }}>
-    
-    {/* O BOTÃO DA CÂMERA AGORA DENTRO DO FLEX */}
-    <button 
-      onClick={() => document.getElementById('ai-photo-upload').click()}
-      style={{
-        padding: "10px",
-        backgroundColor: modernTheme.primaryLight,
-        border: `1px solid ${primaryColor}40`,
-        borderRadius: modernTheme.radiusTiny,
-        cursor: "pointer",
-        fontSize: "18px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center"
-      }}
-      title="Escanear Agenda Física"
-    >
-      📷
-    </button>
+          {/* ========== INPUT DE PERGUNTA (CORRIGIDO) ========== */}
+      <div style={{ 
+        padding: "15px",
+        borderTop: `1px solid ${primaryColor}20`,
+        backgroundColor: "rgba(255,255,255,0.8)",
+        position: "sticky",
+        bottom: 0,
+        zIndex: 10
+      }}>
+        <div style={{ display: "flex", gap: "8px", marginBottom: "8px", alignItems: "center" }}>
+          
+          {/* 1. BOTÃO DA CÂMERA */}
+          <button 
+            type="button"
+            onClick={() => document.getElementById('ai-photo-upload').click()}
+            style={{
+              padding: "10px",
+              backgroundColor: modernTheme.primaryLight,
+              border: `1px solid ${primaryColor}40`,
+              borderRadius: modernTheme.radiusTiny,
+              cursor: "pointer",
+              fontSize: "18px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
+            }}
+            title="Escanear Agenda Física"
+          >
+            📷
+          </button>
 
-    <input 
-  placeholder="Pergunte ou envie foto..."
-  value={aiQuery}
-  onChange={(e) => setAiQuery(e.target.value)}
-  // No Input de texto (onKeyPress):
-onKeyPress={async (e) => {
-  if (e.key === 'Enter' && aiQuery.trim()) {
-    const pergunta = aiQuery;
-    setAiQuery("");
-    setAiResponse("🤖 Deixa eu ver aqui...");
-    await askAI(pergunta); // O 'await' é fundamental aqui!
-  }
-}}
+          {/* 2. CAMPO DE TEXTO (INPUT) */}
+          <input 
+            placeholder="Pergunte ou envie foto..."
+            value={aiQuery}
+            onChange={(e) => setAiQuery(e.target.value)}
+            onKeyPress={async (e) => {
+              if (e.key === 'Enter' && aiQuery.trim()) {
+                const pergunta = aiQuery;
+                setAiQuery("");
+                setAiResponse("🤖 Deixa eu ver aqui...");
+                await askAI(pergunta);
+              }
+            }}
+            style={{ 
+              ...inputStyle, 
+              marginBottom: 0, 
+              flex: 1,
+              fontSize: "14px"
+            }} 
+          />
 
-// No Botão de Enviar (onClick - o ícone 📤):
-onClick={async () => {
-  if (aiQuery.trim()) {
-    const pergunta = aiQuery;
-    setAiQuery("");
-    setAiResponse("🤖 Analisando...");
-    await askAI(pergunta); // Corrigido: antes estava setAiResponse(askAI(...)) que causava o crash
-  }
-}}
-      style={{
-        padding: "10px 14px",
-        backgroundColor: primaryColor,
-        color: "white",
-        border: "none",
-        borderRadius: modernTheme.radiusTiny,
-        cursor: "pointer",
-        fontSize: "14px",
-        fontWeight: "bold"
-      }}
-    >
-      📤
-    </button>
-  </div>
-  
-  {/* O INPUT DE ARQUIVO CONTINUA ESCONDIDO AQUI PERTO */}
-  <input 
-    type="file" 
-    id="ai-photo-upload" 
-    accept="image/*" 
-    style={{ display: "none" }} 
-    onChange={async (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        setAiResponse("⏳ Analisando sua agenda física... Só um instante.");
-        await processAgendaImage(file);
-      }
-    }}
-  />
+          {/* 3. BOTÃO DE ENVIAR (📤) */}
+          <button 
+            type="button"
+            onClick={async () => {
+              if (aiQuery.trim()) {
+                const pergunta = aiQuery;
+                setAiQuery("");
+                setAiResponse("🤖 Analisando...");
+                await askAI(pergunta);
+              }
+            }}
+            style={{
+              padding: "10px 14px",
+              backgroundColor: primaryColor,
+              color: "white",
+              border: "none",
+              borderRadius: modernTheme.radiusTiny,
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: "bold",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
+            }}
+          >
+            📤
+          </button>
+        </div>
+
+        {/* 4. INPUT DE ARQUIVO ESCONDIDO (PARA A CÂMERA) */}
+        <input 
+          type="file" 
+          id="ai-photo-upload" 
+          accept="image/*" 
+          style={{ display: "none" }} 
+          onChange={async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+              setAiResponse("⏳ Analisando sua agenda física... Só um instante.");
+              await processAgendaImage(file);
+            }
+          }}
+        />
 
   {/* SUGESTÕES RÁPIDAS */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
