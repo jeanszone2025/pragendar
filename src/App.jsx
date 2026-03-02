@@ -537,24 +537,22 @@ function PaginaAgendamentoCliente({ tenantId }) {
 }
 
 // ========== COMPONENTE PRINCIPAL: APP DA PROFISSIONAL ==========
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_KEY || "AI_KEY_TESTE");
+  const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_KEY || "AI_KEY_TESTE");
 export default function App() {
-  // ========== DETECTAR SE É CLIENTE OU PROFISSIONAL ==========
+  // 1. Verificação de Roteamento para Clientes (SaaS)
   const urlParams = new URLSearchParams(window.location.search);
   const tenantIdPublico = urlParams.get("p");
 
-  // Se tem parâmetro ?p=, mostra a página de agendamento para clientes
   if (tenantIdPublico) {
     return <PaginaAgendamentoCliente tenantId={tenantIdPublico} />;
   }
 
-  // ========== CASO CONTRÁRIO, MOSTRA O PAINEL DA PROFISSIONAL ==========
-
+  // 2. Declaração de Estados Globais (Início da Lógica Administrativa)
   const [user, setUser] = useState(null);
   const [authTab, setAuthTab] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
+  // ========== CASO CONTRÁRIO, MOSTRA O PAINEL DA PROFISSIONAL ==========
   const [tab, setTab] = useState("agenda");
   const [clients, setClients] = useState([]);
   const [services, setServices] = useState([]);
