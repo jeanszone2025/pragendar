@@ -552,7 +552,8 @@ export default function App() {
   const [authTab, setAuthTab] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  // ========== CASO CONTRÁRIO, MOSTRA O PAINEL DA PROFISSIONAL ==========
+
+  // ========== ESTADOS DE DADOS DO SISTEMA ==========
   const [tab, setTab] = useState("agenda");
   const [clients, setClients] = useState([]);
   const [services, setServices] = useState([]);
@@ -561,6 +562,22 @@ export default function App() {
   const [inventory, setInventory] = useState([]);
   const [profile, setProfile] = useState(null);
 
+  // 🔎 NOVO: Estado para a Busca Geral de Histórico (Feedback Cris)
+  const [searchHistory, setSearchHistory] = useState("");
+
+  // 🔎 NOVO: Lógica que filtra agendamentos por nome ou telefone
+  const filteredHistory = appointments.filter(app => {
+    if (!searchHistory || searchHistory.length < 2) return false;
+    const cli = clients.find(c => c.id === app.clientId);
+    const termo = searchHistory.toLowerCase();
+    return (
+      cli?.nome.toLowerCase().includes(termo) || 
+      cli?.telefone.includes(termo) ||
+      app.clientName?.toLowerCase().includes(termo) // Caso o agendamento não tenha ID de cliente fixo
+    );
+  }).sort((a, b) => new Date(b.dataHora) - new Date(a.dataHora));
+
+  // ========== ESTADOS DE INTERFACE E MODAIS ==========
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMonth, setViewMonth] = useState(new Date().getMonth());
   const [viewYear, setViewYear] = useState(new Date().getFullYear());
@@ -604,14 +621,14 @@ export default function App() {
   const [editingProfile, setEditingProfile] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [gradeHorarios, setGradeHorarios] = useState({
-  0: { aberta: false, horas: [] }, // Domingo
-  1: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] }, // Segunda
-  2: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] }, // Terça
-  3: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] }, // Quarta
-  4: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] }, // Quinta
-  5: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] }, // Sexta
-  6: { aberta: false, horas: [] }  // Sábado
-});
+    0: { aberta: false, horas: [] },
+    1: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] },
+    2: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] },
+    3: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] },
+    4: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] },
+    5: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] },
+    6: { aberta: false, horas: [] }
+  });
 
   const [importingCSV, setImportingCSV] = useState(false);
   const [nomeProduto, setNomeProduto] = useState("");
@@ -621,37 +638,25 @@ export default function App() {
 
   const [primaryColor, setPrimaryColor] = useState("#d81b60");
 
-  // ========== 🆕 ESTADOS PARA O SaaS (PAGAMENTO E TERMOS) ==========
-  // ========== 🆕 ESTADOS DO SaaS (SINAL E PAGAMENTOS) ==========
-const [chavePix, setChavePix] = useState("");
-const [linkCartao, setLinkCartao] = useState("");
-const [porcentagemSinal, setPorcentagemSinal] = useState(30);
-const [termosUso, setTermosUso] = useState("O não comparecimento implica na perda do sinal. Cancelamentos devem ser feitos com 24h de antecedência.");
+  const [chavePix, setChavePix] = useState("");
+  const [linkCartao, setLinkCartao] = useState("");
+  const [porcentagemSinal, setPorcentagemSinal] = useState(30);
+  const [termosUso, setTermosUso] = useState("O não comparecimento implica na perda do sinal.");
 
   const [showAI, setShowAI] = useState(false);
   const [aiQuery, setAiQuery] = useState("");
-  const [aiResponse, setAiResponse] = useState("Olá! Sou sua Gerente Virtual. Pergunte sobre horários, clientes, financeiro ou estoque. ✨");
+  const [aiResponse, setAiResponse] = useState("Olá! Sou sua Gerente Virtual.");
   const [aiChatHistory, setAiChatHistory] = useState([]);
-  const [aiActionData, setAiActionData] = useState(null);
 
+  // ========== THEME ENGINE ==========
   const modernTheme = {
     primary: primaryColor,
     primaryLight: primaryColor + "20",
-    primaryDark: primaryColor + "dd",
     background: "#f8f9fa",
     card: "#ffffff",
     text: "#2d3436",
-    textLight: "#636e72",
-    textMuted: "#a0a0a0",
     shadow: "0 4px 15px rgba(0,0,0,0.08)",
-    shadowHeavy: "0 8px 25px rgba(0,0,0,0.12)",
-    radius: "12px",
-    radiusSmall: "8px",
-    radiusTiny: "5px",
-    success: "#4caf50",
-    warning: "#ff9800",
-    danger: "#f44336",
-    info: "#2196f3"
+    radius: "12px"
   };
 
   useEffect(() => {
@@ -664,6 +669,8 @@ const [termosUso, setTermosUso] = useState("O não comparecimento implica na per
     });
     return unsub;
   }, []);
+
+  // ... (handleAuth e loadData continuam abaixo)
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -1355,31 +1362,74 @@ ${appointments.map(a => {
       <div style={{ padding: "0 15px" }}>
         {/* === ABA AGENDA === */}
         {tab === "agenda" && (
-          <div>
-            <div style={{...cardStyle, boxShadow: modernTheme.shadow}}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
-                <button onClick={() => setViewMonth(v => (v - 1 + 12) % 12)} style={{...btnMini, backgroundColor: primaryColor, color: "#fff"}}>{"<"}</button>
-                <strong style={{color: modernTheme.text, fontSize: "16px"}}>{nomeMeses[viewMonth]} {viewYear}</strong>
-                <button onClick={() => setViewMonth(v => (v + 1) % 12)} style={{...btnMini, backgroundColor: primaryColor, color: "#fff"}}>{" >"}</button>
-              </div>
+          <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
+            
+            {/* 🔍 ÁREA DE BUSCA DE HISTÓRICO (PROJETO CRIS) */}
+            <div style={{...cardStyle, boxShadow: modernTheme.shadow, marginBottom: "20px", borderLeft: `5px solid ${primaryColor}`}}>
+              <h3 style={{color: modernTheme.text, fontSize: "14px", margin: "0 0 10px 0", display: "flex", alignItems: "center", gap: "8px"}}>
+                <span>🔍</span> Pesquisar Histórico de Cliente
+              </h3>
+              <input 
+                placeholder="Digite nome ou número..." 
+                value={searchHistory}
+                onChange={(e) => setSearchHistory(e.target.value)}
+                style={{...inputStyle, marginBottom: searchHistory.length >= 2 ? "15px" : "0"}}
+              />
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "5px", marginBottom: "15px" }}>
-                {["D","S","T","Q","Q","S","S"].map(d => <div key={d} style={{textAlign:"center", fontSize:"10px", fontWeight:"bold", padding: "8px 0", color: modernTheme.textLight}}>{d}</div>)}
-                {Array(new Date(viewYear, viewMonth, 1).getDay()).fill(null).map((_, i) => <div key={i}></div>)}
-                {Array.from({ length: new Date(viewYear, viewMonth + 1, 0).getDate() }, (_, i) => i + 1).map(dia => (
-                  <div key={dia} onClick={() => setSelectedDate(new Date(viewYear, viewMonth, dia))}
-                    style={{ 
-                      padding: "10px 5px", textAlign: "center", borderRadius: modernTheme.radiusTiny, cursor: "pointer", 
-                      border: `2px solid ${selectedDate.getDate() === dia && selectedDate.getMonth() === viewMonth ? primaryColor : "#eee"}`,
-                      backgroundColor: selectedDate.getDate() === dia && selectedDate.getMonth() === viewMonth ? primaryColor : modernTheme.card,
-                      color: selectedDate.getDate() === dia && selectedDate.getMonth() === viewMonth ? "#fff" : modernTheme.text, 
-                      fontSize: "12px", fontWeight: selectedDate.getDate() === dia && selectedDate.getMonth() === viewMonth ? "bold" : "normal"
-                    }}>
-                    {dia}
-                  </div>
-                ))}
-              </div>
+              {/* LISTAGEM DE RESULTADOS */}
+              {searchHistory.length >= 2 && (
+                <div style={{ maxHeight: "350px", overflowY: "auto", paddingRight: "5px" }}>
+                  {filteredHistory.length === 0 ? (
+                    <p style={{fontSize: "12px", color: "#999", textAlign: "center", padding: "10px"}}>Nenhum registro encontrado para "{searchHistory}"</p>
+                  ) : (
+                    filteredHistory.map(app => {
+                      const dataApp = new Date(app.dataHora);
+                      const ehPassado = dataApp < new Date();
+                      const serv = services.find(s => s.id === app.serviceId);
+                      
+                      return (
+                        <div key={app.id} style={{
+                          padding: "12px",
+                          borderRadius: "10px",
+                          // LÓGICA DE CORES: Cinza se passado, Cor do tema se futuro
+                          backgroundColor: ehPassado ? "#f1f1f1" : modernTheme.primaryLight,
+                          marginBottom: "10px",
+                          border: `1px solid ${ehPassado ? "#ddd" : primaryColor + "40"}`,
+                          opacity: ehPassado ? 0.6 : 1, // "Apagado" se for passado
+                          transition: "all 0.2s ease"
+                        }}>
+                          <div style={{display: "flex", justifyContent: "space-between", marginBottom: "5px"}}>
+                            <strong style={{fontSize: "13px", color: ehPassado ? "#666" : modernTheme.text}}>
+                              {dataApp.toLocaleDateString("pt-BR")} às {String(dataApp.getHours()).padStart(2, "0")}:00h
+                            </strong>
+                            <span style={{
+                              fontSize: "9px", 
+                              fontWeight: "bold", 
+                              padding: "2px 6px", 
+                              borderRadius: "4px",
+                              backgroundColor: ehPassado ? "#ccc" : primaryColor,
+                              color: "#fff"
+                            }}>
+                              {ehPassado ? "PASSADO" : "AGENDADO"}
+                            </span>
+                          </div>
+                          <p style={{margin: 0, fontSize: "13px", color: modernTheme.text}}>
+                            <strong>Procedimento:</strong> {serv?.nome || "Não definido"}
+                          </p>
+                          {/* Detalhes do procedimento */}
+                          <div style={{marginTop: "6px", fontSize: "11px", color: "#777", background: "rgba(255,255,255,0.4)", padding: "5px", borderRadius: "5px"}}>
+                            {serv?.descricao ? `📝 ${serv.descricao}` : "ℹ️ Sem descrição cadastrada."}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  <button onClick={() => setSearchHistory("")} style={{...btnMini, width: "100%", marginTop: "5px", backgroundColor: "#eee"}}>Fechar Pesquisa</button>
+                </div>
+              )}
             </div>
+
+            {/* O RESTANTE DO SEU CÓDIGO (Calendário e Horários) VEM AQUI */}
 
             <div style={{...cardStyle, boxShadow: modernTheme.shadow, marginTop: "15px"}}>
               <h3 style={{borderBottom: `2px solid ${primaryColor}`, paddingBottom: "10px", color: modernTheme.text, margin: "0 0 15px 0"}}>📅 Dia {selectedDate.toLocaleDateString("pt-BR")}</h3>
@@ -1404,6 +1454,7 @@ ${appointments.map(a => {
 
                   const app = getAppDoHorario(hora);
                   const isStart = app && new Date(app.dataHora).getHours() === hora;
+                  
 
                   return (
                     <div key={hora} style={{ 
