@@ -805,23 +805,34 @@ async function loadProfile(uid) {
   }
 }
 
-    const handleFileUpload = async (e) => { // <--- ESTE ASYNC É O QUE FALTA!
-    const file = e.target.files[0];
-    if (!file || !user) return;
+    const handleFileUpload = async (e) => {
+  const file = e.target.files[0];
+  if (!file || !user) return;
 
-    setUploadingLogo(true);
-    try {
-      const storageRef = ref(storage, `logos/${user.uid}`);
-      const snapshot = await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(snapshot.ref);
-      setLogoUrl(url);
-      alert("✅ Imagem carregada! Clique em 'Salvar Alterações' para confirmar.");
-    } catch (error) {
-      alert("❌ Erro ao carregar imagem: " + error.message);
-    } finally {
-      setUploadingLogo(false);
-    }
-  };
+  // 1. Inicia o carregamento (pode colocar um "Girando..." na tela)
+  setUploadingLogo(true);
+
+  try {
+    // 2. Define onde a foto vai ficar (Pasta logos / ID único do profissional)
+    const storageRef = ref(storage, `logos/${user.uid}`);
+    
+    // 3. Faz o Upload real para a nuvem
+    const snapshot = await uploadBytes(storageRef, file);
+    
+    // 4. Pergunta para o Firebase: "Qual o link dessa foto que acabei de subir?"
+    const url = await getDownloadURL(snapshot.ref);
+    
+    // 5. Atualiza o "estado" para a foto aparecer no app na hora
+    setLogoUrl(url); 
+    
+    alert("✅ Logo atualizada com sucesso! Não esqueça de Salvar as Alterações.");
+  } catch (error) {
+    console.error("Erro no upload:", error);
+    alert("❌ Erro ao subir imagem. Tente uma foto menor.");
+  } finally {
+    setUploadingLogo(false);
+  }
+};
 
   const handleCSVImport = async (e) => {
     const file = e.target.files[0];
@@ -1353,54 +1364,46 @@ ${appointments.map(a => {
     paddingBottom: "100px", 
     fontFamily: "sans-serif" 
   }}>
-      
-      <header style={{ 
+     <header style={{ 
         display: "flex", 
-        justifyContent: "space-between", 
+        justifyContent: "space-between", // Empurra a logo pra esquerda e o Sair pra direita
         alignItems: "center", 
-        padding: "20px 15px", 
+        padding: "15px 20px", 
         backgroundColor: modernTheme.card, 
         boxShadow: modernTheme.shadow,
         marginBottom: "15px",
         borderBottom: `3px solid ${primaryColor}`
       }}>
+        {/* LADO ESQUERDO: LOGO + NOME */}
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           {logoUrl ? (
-            <img src={logoUrl} alt="Logo" style={{ width: "50px", height: "50px", borderRadius: "50%", objectFit: "cover", border: `3px solid ${primaryColor}` }} />
+            <img src={logoUrl} alt="Logo" style={{ width: "45px", height: "45px", borderRadius: "50%", objectFit: "cover", border: `2px solid ${primaryColor}` }} />
           ) : (
-            <div style={{ width: "50px", height: "50px", borderRadius: "50%", backgroundColor: primaryColor, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "24px", fontWeight: "bold" }}>✨</div>
+            <div style={{ width: "45px", height: "45px", borderRadius: "50%", backgroundColor: primaryColor, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "20px" }}>✨</div>
           )}
           <div>
-            <h1 style={{ color: modernTheme.text, margin: 0, fontSize: "18px", fontWeight: "800" }}>{nomeEmpresa || "Pragendar R$"}</h1>
-            <small style={{ color: modernTheme.textMuted, display: "block", fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px" }}>Painel Administrativo Premium</small>
+            <h1 style={{ color: modernTheme.text, margin: 0, fontSize: "16px", fontWeight: "800" }}>{nomeEmpresa || "Pragendar R$"}</h1>
+            <small style={{ color: modernTheme.textMuted, fontSize: "10px", display: "block" }}>Painel Administrativo</small>
           </div>
         </div>
+
+        {/* LADO DIREITO: BOTÃO SAIR */}
         <button 
           onClick={() => signOut(auth)} 
           style={{ 
-            padding: "8px 16px", 
+            padding: "6px 12px", 
             backgroundColor: "transparent", 
             color: modernTheme.danger, 
-            border: `2px solid ${modernTheme.danger}`,
-            borderRadius: modernTheme.radiusSmall,
+            border: `1px solid ${modernTheme.danger}`,
+            borderRadius: "6px",
             cursor: "pointer", 
-            fontSize: "12px", 
-            fontWeight: "bold",
-            transition: "all 0.3s ease"
-          }}
-          onMouseOver={(e) => {
-            e.target.style.backgroundColor = modernTheme.danger;
-            e.target.style.color = "white";
-          }}
-          onMouseOut={(e) => {
-            e.target.style.backgroundColor = "transparent";
-            e.target.style.color = modernTheme.danger;
+            fontSize: "11px", 
+            fontWeight: "bold"
           }}
         >
           Sair
         </button>
       </header>
-
       <nav style={{ 
         display: "flex", 
         gap: "8px", 
