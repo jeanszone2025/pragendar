@@ -2551,45 +2551,46 @@ ${appointments.map(a => {
               <option value="">Selecione o Serviço</option>
               {services.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
             </select>
-            <button onClick={async () => {
-              const dFinal = new Date(selectedDate); dFinal.setHours(selHora, 0, 0, 0);
-              const d = { clientId: selCliente, serviceId: selServico, dataHora: dFinal.toISOString(), status: "pendente", tenantId: user.uid };
-              if(editAppId) await updateDoc(doc(db, "appointments", editAppId), d);
-              else await addDoc(collection(db, "appointments"), d);
-              setShowModal(false); loadData(user.uid);
-            }} style={{...btnStyle, backgroundColor: modernTheme.success}}>Confirmar</button>
+            {/* ... final do código do modal de agendamento que já existe ... */}
             <button onClick={() => setShowModal(false)} style={{...btnStyle, backgroundColor: "#ccc", marginTop: "10px"}}>Cancelar</button>
           </div>
         </div>
       )}
-    </div>
-  );
-}
-{/* ========== MODAL DE CONFIRMAÇÃO DE PAGAMENTO (ADICIONADO) ========== */}
-{showPaymentModal && selectedAppForPayment && (
-  <div style={modalOverlay}>
-    <div style={{...modalContent, borderTop: `4px solid ${modernTheme.success}`}}>
-      <h3 style={{color: modernTheme.success}}>💰 Confirmar Pagamento</h3>
-      <p style={{fontSize: "14px", color: modernTheme.text}}>
-        Deseja confirmar o recebimento do pagamento de <strong>{getNome(clients, selectedAppForPayment.clientId)}</strong>?
-      </p>
-      <div style={{padding: "10px", backgroundColor: "#f9f9f9", borderRadius: "8px", marginBottom: "15px"}}>
-        <small>Serviço: {getNome(services, selectedAppForPayment.serviceId)}</small><br/>
-        <strong>Valor: R$ {services.find(s => s.id === selectedAppForPayment.serviceId)?.preco.toFixed(2)}</strong>
-      </div>
-      
-      <label style={labelStyle}>Forma de Recebimento:</label>
-      <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} style={inputStyle}>
-        <option value="pix">📲 Pix</option>
-        <option value="dinheiro">💵 Dinheiro</option>
-        <option value="cartao">💳 Cartão</option>
-      </select>
 
-      <button onClick={confirmPayment} style={{...btnStyle, backgroundColor: modernTheme.success}}>✅ Confirmar e Salvar no Caixa</button>
-      <button onClick={() => setShowPaymentModal(false)} style={{...btnStyle, backgroundColor: "#ccc", marginTop: "10px"}}>Cancelar</button>
-    </div>
-  </div>
-)}
+      {/* 🟢 O MODAL DE PAGAMENTO ENTRA AQUI (DENTRO DA DIV PRINCIPAL) */}
+      {showPaymentModal && selectedAppForPayment && (
+        <div style={modalOverlay}>
+          <div style={{...modalContent, borderTop: `4px solid ${modernTheme.success}`}}>
+            <h3 style={{color: modernTheme.success}}>💰 Confirmar Pagamento</h3>
+            <p style={{fontSize: "14px", color: modernTheme.text}}>
+              Deseja confirmar o recebimento do pagamento de <strong>{getNome(clients, selectedAppForPayment.clientId)}</strong>?
+            </p>
+            <div style={{padding: "10px", backgroundColor: "#f9f9f9", borderRadius: "8px", marginBottom: "15px"}}>
+              <small>Serviço: {getNome(services, selectedAppForPayment.serviceId)}</small><br/>
+              <strong>Valor: R$ {services.find(s => s.id === selectedAppForPayment.serviceId)?.preco.toFixed(2)}</strong>
+            </div>
+            
+            <label style={labelStyle}>Forma de Recebimento:</label>
+            <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} style={inputStyle}>
+              <option value="pix">📲 Pix</option>
+              <option value="dinheiro">💵 Dinheiro</option>
+              <option value="cartao">💳 Cartão</option>
+            </select>
+
+            <button onClick={confirmPayment} style={{...btnStyle, backgroundColor: modernTheme.success}}>✅ Confirmar e Salvar no Caixa</button>
+            <button onClick={() => setShowPaymentModal(false)} style={{...btnStyle, backgroundColor: "#ccc", marginTop: "10px"}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+    </div> // ⬅️ Penúltima chave (fecha a div principal)
+  ); // ⬅️ Fecha o return
+} // ⬅️ ÚLTIMA CHAVE (fecha a função App)
+
+// ========== ESTILOS E AUXILIARES (FORA DO APP) ==========
+// Seus estilos começam logo abaixo daqui...
+
+
 // ========== ESTILOS E AUXILIARES (FORA DO APP) ==========
 
 const nomeMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
