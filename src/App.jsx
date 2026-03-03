@@ -10,7 +10,39 @@ import {
 } from "firebase/auth";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, auth, storage } from "./firebase";
-
+// 🟢 COLE ISSO AQUI (Aproximadamente linha 15)
+const TEMAS = {
+  premium: {
+    id: "premium",
+    nome: "Ametista & Mármore",
+    primary: "#6b4f7a",
+    secondary: "#b89b6a",
+    background: "#f5f5f2",
+    backgroundImage: "url('https://firebasestorage.googleapis.com/v0/b/teste-pra-agendar.firebasestorage.app/o/4988233506899037035.jpg?alt=media&token=f4b6ba30-4e56-4623-8e09-2e7227db5f39')",
+    card: "rgba(255, 255, 255, 0.8)",
+    text: "#2c3e50"
+  },
+  barbearia: {
+    id: "barbearia",
+    nome: "Industrial & Dark",
+    primary: "#2c3e50",
+    secondary: "#7f8c8d",
+    background: "#1a1a1a",
+    backgroundImage: "url('https://firebasestorage.googleapis.com/v0/b/teste-pra-agendar.firebasestorage.app/o/4988233506899037046.jpg?alt=media&token=f5f333ae-f631-4def-bb13-da68e29206f2')",
+    card: "#252525",
+    text: "#ecf0f1"
+  },
+  classic: {
+    id: "classic",
+    nome: "Clean & Soft",
+    primary: "#d81b60",
+    secondary: "#f06292",
+    background: "#fdfbfb",
+    backgroundImage: "url('https://firebasestorage.googleapis.com/v0/b/teste-pra-agendar.firebasestorage.app/o/4988233506899037036.jpg?alt=media&token=ce8b15d3-48ef-4689-9c11-51ca2f2a63f3')",
+    card: "#ffffff",
+    text: "#2d3436"
+  }
+};
 // ========== COMPONENTE: PÁGINA DE AGENDAMENTO PARA CLIENTES ==========
 function PaginaAgendamentoCliente({ tenantId }) {
   const [profile, setProfile] = useState(null);
@@ -25,15 +57,21 @@ function PaginaAgendamentoCliente({ tenantId }) {
   const [step, setStep] = useState(1); // 1: Serviço, 2: Data/Hora, 3: Confirmação, 4: Pagamento
   const [appointments, setAppointments] = useState([]);
 
-  const modernTheme = {
-    primary: profile?.primaryColor || "#d81b60",
-    background: "#f8f9fa",
-    card: "#ffffff",
-    text: "#2d3436",
-    textLight: "#636e72",
-    shadow: "0 4px 15px rgba(0,0,0,0.08)",
-    radius: "12px"
-  };
+  // Procure onde você definiu o modernTheme e substitua por isso:
+const temaId = profile?.themeId || "classic";
+const temaAtual = TEMAS[temaId];
+
+const modernTheme = {
+  // Aqui pegamos a cor direto do perfil do banco de dados
+  primary: profile?.primaryColor || temaAtual.primary, 
+  background: temaAtual.background,
+  backgroundImage: temaAtual.backgroundImage,
+  card: temaAtual.card,
+  text: temaAtual.text,
+  textLight: "#7f8c8d",
+  radius: "16px",
+  shadow: "0 8px 32px rgba(0,0,0,0.1)"
+};
 
   useEffect(() => {
     loadPublicProfile();
@@ -552,7 +590,8 @@ export default function App() {
   const [authTab, setAuthTab] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  // ========== CASO CONTRÁRIO, MOSTRA O PAINEL DA PROFISSIONAL ==========
+
+  // ========== ESTADOS DE DADOS DO SISTEMA ==========
   const [tab, setTab] = useState("agenda");
   const [clients, setClients] = useState([]);
   const [services, setServices] = useState([]);
@@ -561,6 +600,22 @@ export default function App() {
   const [inventory, setInventory] = useState([]);
   const [profile, setProfile] = useState(null);
 
+  // 🔎 NOVO: Estado para a Busca Geral de Histórico (Feedback Cris)
+  const [searchHistory, setSearchHistory] = useState("");
+
+  // 🔎 NOVO: Lógica que filtra agendamentos por nome ou telefone
+  const filteredHistory = appointments.filter(app => {
+    if (!searchHistory || searchHistory.length < 2) return false;
+    const cli = clients.find(c => c.id === app.clientId);
+    const termo = searchHistory.toLowerCase();
+    return (
+      cli?.nome.toLowerCase().includes(termo) || 
+      cli?.telefone.includes(termo) ||
+      app.clientName?.toLowerCase().includes(termo) // Caso o agendamento não tenha ID de cliente fixo
+    );
+  }).sort((a, b) => new Date(b.dataHora) - new Date(a.dataHora));
+
+  // ========== ESTADOS DE INTERFACE E MODAIS ==========
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMonth, setViewMonth] = useState(new Date().getMonth());
   const [viewYear, setViewYear] = useState(new Date().getFullYear());
@@ -604,14 +659,14 @@ export default function App() {
   const [editingProfile, setEditingProfile] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [gradeHorarios, setGradeHorarios] = useState({
-  0: { aberta: false, horas: [] }, // Domingo
-  1: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] }, // Segunda
-  2: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] }, // Terça
-  3: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] }, // Quarta
-  4: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] }, // Quinta
-  5: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] }, // Sexta
-  6: { aberta: false, horas: [] }  // Sábado
-});
+    0: { aberta: false, horas: [] },
+    1: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] },
+    2: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] },
+    3: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] },
+    4: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] },
+    5: { aberta: true, horas: [9, 10, 11, 14, 15, 16, 17] },
+    6: { aberta: false, horas: [] }
+  });
 
   const [importingCSV, setImportingCSV] = useState(false);
   const [nomeProduto, setNomeProduto] = useState("");
@@ -621,38 +676,39 @@ export default function App() {
 
   const [primaryColor, setPrimaryColor] = useState("#d81b60");
 
-  // ========== 🆕 ESTADOS PARA O SaaS (PAGAMENTO E TERMOS) ==========
-  // ========== 🆕 ESTADOS DO SaaS (SINAL E PAGAMENTOS) ==========
-const [chavePix, setChavePix] = useState("");
-const [linkCartao, setLinkCartao] = useState("");
-const [porcentagemSinal, setPorcentagemSinal] = useState(30);
-const [termosUso, setTermosUso] = useState("O não comparecimento implica na perda do sinal. Cancelamentos devem ser feitos com 24h de antecedência.");
+  const [chavePix, setChavePix] = useState("");
+  const [linkCartao, setLinkCartao] = useState("");
+  const [porcentagemSinal, setPorcentagemSinal] = useState(30);
+  const [termosUso, setTermosUso] = useState("O não comparecimento implica na perda do sinal.");
 
   const [showAI, setShowAI] = useState(false);
   const [aiQuery, setAiQuery] = useState("");
-  const [aiResponse, setAiResponse] = useState("Olá! Sou sua Gerente Virtual. Pergunte sobre horários, clientes, financeiro ou estoque. ✨");
+  const [aiResponse, setAiResponse] = useState("Olá! Sou sua Gerente Virtual.");
   const [aiChatHistory, setAiChatHistory] = useState([]);
-  const [aiActionData, setAiActionData] = useState(null);
 
-  const modernTheme = {
-    primary: primaryColor,
-    primaryLight: primaryColor + "20",
-    primaryDark: primaryColor + "dd",
-    background: "#f8f9fa",
-    card: "#ffffff",
-    text: "#2d3436",
-    textLight: "#636e72",
-    textMuted: "#a0a0a0",
-    shadow: "0 4px 15px rgba(0,0,0,0.08)",
-    shadowHeavy: "0 8px 25px rgba(0,0,0,0.12)",
-    radius: "12px",
-    radiusSmall: "8px",
-    radiusTiny: "5px",
-    success: "#4caf50",
-    warning: "#ff9800",
-    danger: "#f44336",
-    info: "#2196f3"
-  };
+  // ========== THEME ENGINE ==========
+  // ========== THEME ENGINE DINÂMICO ==========
+const temaIdAdmin = profile?.themeId || "classic";
+const temaAtualAdmin = TEMAS[temaIdAdmin];
+
+const modernTheme = {
+  primary: primaryColor,
+  primaryLight: primaryColor + "20",
+  background: temaAtualAdmin.background,
+  backgroundImage: temaAtualAdmin.backgroundImage, 
+  card: temaAtualAdmin.card,
+  text: temaAtualAdmin.text,
+  textMuted: "#95a5a6",
+  danger: "#e74c3c",
+  success: "#27ae60",
+  warning: "#f1c40f",
+  info: "#3498db",
+  shadow: "0 4px 15px rgba(0,0,0,0.08)",
+  shadowHeavy: "0 8px 25px rgba(0,0,0,0.15)",
+  radius: "12px",
+  radiusSmall: "8px",
+  radiusTiny: "6px"
+};
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (loggedUser) => {
@@ -664,6 +720,8 @@ const [termosUso, setTermosUso] = useState("O não comparecimento implica na per
     });
     return unsub;
   }, []);
+
+  // ... (handleAuth e loadData continuam abaixo)
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -853,6 +911,7 @@ async function loadProfile(uid) {
         gradeHorarios,
         primaryColor,
         // 🆕 SALVAR DADOS DO SaaS
+        themeId: profile?.themeId || "classic",
         chavePix,
         linkCartao,
         porcentagemSinal: Number(porcentagemSinal),
@@ -1200,54 +1259,100 @@ ${appointments.map(a => {
   };
 
   if (!user) {
-    return (
-      <div style={{ 
-        padding: "40px 20px", 
-        fontFamily: "sans-serif", 
-        textAlign: "center", 
-        minHeight: "100vh", 
-        display: "flex", 
-        flexDirection: "column", 
-        justifyContent: "center", 
-        alignItems: "center", 
-        backgroundColor: modernTheme.background,
-        background: `linear-gradient(135deg, ${modernTheme.background} 0%, ${primaryColor}10 100%)`
+  return (
+    <div style={{ 
+      padding: "40px 20px", 
+      fontFamily: "'Inter', sans-serif", 
+      textAlign: "center", 
+      minHeight: "100vh", 
+      display: "flex", 
+      flexDirection: "column", 
+      justifyContent: "center", 
+      alignItems: "center", 
+      // Fundo inspirado na textura de mármore e tons navy/gold
+      background: `linear-gradient(135deg, #f5f5f2 0%, #e0dcd3 100%)`,
+      backgroundImage: `url('https://www.transparenttextures.com/patterns/white-marble.png')` 
+    }}>
+      {/* 1. IMAGEM DA LOGOMARCA (Substituindo o texto) */}
+      <img 
+        src="https://firebasestorage.googleapis.com/v0/b/teste-pra-agendar.firebasestorage.app/o/4979208921616682355.png?alt=media&token=fd9fe2fc-1001-484b-a501-bd95d1241f5a" 
+        alt="Pra agendar" 
+        style={{ width: "220px", marginBottom: "30px", filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.1))" }} 
+      />
+
+      {/* 2. CARD DE LOGIN ESTILO PREMIUM */}
+      <div style={{
+        backgroundColor: "rgba(255, 255, 255, 0.7)",
+        backdropFilter: "blur(15px)", // Efeito de vidro
+        padding: "30px",
+        borderRadius: "20px",
+        width: "100%",
+        maxWidth: "380px",
+        boxShadow: "0 10px 40px rgba(0,0,0,0.1)",
+        border: "1px solid rgba(255,255,255,0.5)"
       }}>
-        <h1 style={{ color: primaryColor, marginBottom: "10px", fontSize: "3rem", fontWeight: "800" }}>✨ Pragendar R$</h1>
-        <p style={{ color: modernTheme.textMuted, marginBottom: "40px", fontSize: "14px", fontWeight: "500" }}>Sistema Premium de Gestão de Agendamentos + SaaS</p>
-        <div style={{...cardStyle, width: "100%", maxWidth: "380px", boxShadow: modernTheme.shadowHeavy}}>
-          <h3 style={{marginTop: 0, color: primaryColor}}>{authTab === "login" ? "🔐 Entrar" : "📝 Criar Conta"}</h3>
-          <form onSubmit={handleAuth}>
+        <h3 style={{ marginTop: 0, color: "#2c3e50", fontWeight: "700" }}>
+          {authTab === "login" ? "Bem-vinda ao Pragendar" : "Criar sua conta Premium"}
+        </h3>
+        
+        <form onSubmit={handleAuth}>
+          <div style={{ textAlign: "left", marginBottom: "15px" }}>
+            <label style={{ fontSize: "12px", fontWeight: "bold", color: "#7f8c8d", marginLeft: "5px" }}>E-mail</label>
             <input 
-              placeholder="📧 E-mail" 
+              placeholder="seu@email.com" 
               type="email"
               value={email} 
               onChange={e => setEmail(e.target.value)} 
-              style={inputStyle} 
+              style={{ ...inputStyle, backgroundColor: "rgba(255,255,255,0.8)", border: "1px solid #dcdde1" }} 
               required
             />
+          </div>
+
+          <div style={{ textAlign: "left", marginBottom: "20px" }}>
+            <label style={{ fontSize: "12px", fontWeight: "bold", color: "#7f8c8d", marginLeft: "5px" }}>Senha</label>
             <input 
-              placeholder="🔑 Senha" 
+              placeholder="••••••••" 
               type="password" 
               value={password} 
               onChange={e => setPassword(e.target.value)} 
-              style={inputStyle}
+              style={{ ...inputStyle, backgroundColor: "rgba(255,255,255,0.8)", border: "1px solid #dcdde1" }}
               required
             />
-            <button type="submit" style={{...btnStyle, background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}dd)`}}>
-              {authTab === "login" ? "Entrar" : "Cadastrar"}
-            </button>
-          </form>
-          <p onClick={() => setAuthTab(authTab === "login" ? "cadastro" : "login")} style={{ cursor: "pointer", color: primaryColor, marginTop: "15px", fontSize: "14px", fontWeight: "bold" }}>
-            {authTab === "login" ? "👤 Novo por aqui? Cadastre-se" : "✅ Já tem conta? Faça Login"}
-          </p>
-        </div>
+          </div>
+
+          <button type="submit" style={{
+            ...btnStyle, 
+            background: `linear-gradient(135deg, #6b4f7a, #4a3457)`, // Tom Amethyst/Deep Navy
+            boxShadow: "0 4px 15px rgba(74, 52, 87, 0.3)",
+            fontSize: "16px",
+            letterSpacing: "1px"
+          }}>
+            {authTab === "login" ? "Entrar" : "Finalizar Cadastro"}
+          </button>
+        </form>
+
+        <p 
+          onClick={() => setAuthTab(authTab === "login" ? "cadastro" : "login")} 
+          style={{ cursor: "pointer", color: "#6b4f7a", marginTop: "20px", fontSize: "14px", fontWeight: "600" }}
+        >
+          {authTab === "login" ? "Ainda não tem conta? Toque aqui" : "Já possui conta? Entrar agora"}
+        </p>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   return (
-    <div style={{ backgroundColor: modernTheme.background, minHeight: "100vh", paddingBottom: "100px", fontFamily: "sans-serif" }}>
+  <div style={{ 
+    backgroundColor: modernTheme.background, 
+    backgroundImage: modernTheme.backgroundImage, // ADICIONADO
+    backgroundAttachment: "fixed",               // ADICIONADO
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    minHeight: "100vh", 
+    paddingBottom: "100px", 
+    fontFamily: "sans-serif" 
+  }}>
       
       <header style={{ 
         display: "flex", 
@@ -1355,31 +1460,74 @@ ${appointments.map(a => {
       <div style={{ padding: "0 15px" }}>
         {/* === ABA AGENDA === */}
         {tab === "agenda" && (
-          <div>
-            <div style={{...cardStyle, boxShadow: modernTheme.shadow}}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
-                <button onClick={() => setViewMonth(v => (v - 1 + 12) % 12)} style={{...btnMini, backgroundColor: primaryColor, color: "#fff"}}>{"<"}</button>
-                <strong style={{color: modernTheme.text, fontSize: "16px"}}>{nomeMeses[viewMonth]} {viewYear}</strong>
-                <button onClick={() => setViewMonth(v => (v + 1) % 12)} style={{...btnMini, backgroundColor: primaryColor, color: "#fff"}}>{" >"}</button>
-              </div>
+          <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
+            
+            {/* 🔍 ÁREA DE BUSCA DE HISTÓRICO (PROJETO CRIS) */}
+            <div style={{...cardStyle, boxShadow: modernTheme.shadow, marginBottom: "20px", borderLeft: `5px solid ${primaryColor}`}}>
+              <h3 style={{color: modernTheme.text, fontSize: "14px", margin: "0 0 10px 0", display: "flex", alignItems: "center", gap: "8px"}}>
+                <span>🔍</span> Pesquisar Histórico de Cliente
+              </h3>
+              <input 
+                placeholder="Digite nome ou número..." 
+                value={searchHistory}
+                onChange={(e) => setSearchHistory(e.target.value)}
+                style={{...inputStyle, marginBottom: searchHistory.length >= 2 ? "15px" : "0"}}
+              />
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "5px", marginBottom: "15px" }}>
-                {["D","S","T","Q","Q","S","S"].map(d => <div key={d} style={{textAlign:"center", fontSize:"10px", fontWeight:"bold", padding: "8px 0", color: modernTheme.textLight}}>{d}</div>)}
-                {Array(new Date(viewYear, viewMonth, 1).getDay()).fill(null).map((_, i) => <div key={i}></div>)}
-                {Array.from({ length: new Date(viewYear, viewMonth + 1, 0).getDate() }, (_, i) => i + 1).map(dia => (
-                  <div key={dia} onClick={() => setSelectedDate(new Date(viewYear, viewMonth, dia))}
-                    style={{ 
-                      padding: "10px 5px", textAlign: "center", borderRadius: modernTheme.radiusTiny, cursor: "pointer", 
-                      border: `2px solid ${selectedDate.getDate() === dia && selectedDate.getMonth() === viewMonth ? primaryColor : "#eee"}`,
-                      backgroundColor: selectedDate.getDate() === dia && selectedDate.getMonth() === viewMonth ? primaryColor : modernTheme.card,
-                      color: selectedDate.getDate() === dia && selectedDate.getMonth() === viewMonth ? "#fff" : modernTheme.text, 
-                      fontSize: "12px", fontWeight: selectedDate.getDate() === dia && selectedDate.getMonth() === viewMonth ? "bold" : "normal"
-                    }}>
-                    {dia}
-                  </div>
-                ))}
-              </div>
+              {/* LISTAGEM DE RESULTADOS */}
+              {searchHistory.length >= 2 && (
+                <div style={{ maxHeight: "350px", overflowY: "auto", paddingRight: "5px" }}>
+                  {filteredHistory.length === 0 ? (
+                    <p style={{fontSize: "12px", color: "#999", textAlign: "center", padding: "10px"}}>Nenhum registro encontrado para "{searchHistory}"</p>
+                  ) : (
+                    filteredHistory.map(app => {
+                      const dataApp = new Date(app.dataHora);
+                      const ehPassado = dataApp < new Date();
+                      const serv = services.find(s => s.id === app.serviceId);
+                      
+                      return (
+                        <div key={app.id} style={{
+                          padding: "12px",
+                          borderRadius: "10px",
+                          // LÓGICA DE CORES: Cinza se passado, Cor do tema se futuro
+                          backgroundColor: ehPassado ? "#f1f1f1" : modernTheme.primaryLight,
+                          marginBottom: "10px",
+                          border: `1px solid ${ehPassado ? "#ddd" : primaryColor + "40"}`,
+                          opacity: ehPassado ? 0.6 : 1, // "Apagado" se for passado
+                          transition: "all 0.2s ease"
+                        }}>
+                          <div style={{display: "flex", justifyContent: "space-between", marginBottom: "5px"}}>
+                            <strong style={{fontSize: "13px", color: ehPassado ? "#666" : modernTheme.text}}>
+                              {dataApp.toLocaleDateString("pt-BR")} às {String(dataApp.getHours()).padStart(2, "0")}:00h
+                            </strong>
+                            <span style={{
+                              fontSize: "9px", 
+                              fontWeight: "bold", 
+                              padding: "2px 6px", 
+                              borderRadius: "4px",
+                              backgroundColor: ehPassado ? "#ccc" : primaryColor,
+                              color: "#fff"
+                            }}>
+                              {ehPassado ? "PASSADO" : "AGENDADO"}
+                            </span>
+                          </div>
+                          <p style={{margin: 0, fontSize: "13px", color: modernTheme.text}}>
+                            <strong>Procedimento:</strong> {serv?.nome || "Não definido"}
+                          </p>
+                          {/* Detalhes do procedimento */}
+                          <div style={{marginTop: "6px", fontSize: "11px", color: "#777", background: "rgba(255,255,255,0.4)", padding: "5px", borderRadius: "5px"}}>
+                            {serv?.descricao ? `📝 ${serv.descricao}` : "ℹ️ Sem descrição cadastrada."}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  <button onClick={() => setSearchHistory("")} style={{...btnMini, width: "100%", marginTop: "5px", backgroundColor: "#eee"}}>Fechar Pesquisa</button>
+                </div>
+              )}
             </div>
+
+            {/* O RESTANTE DO SEU CÓDIGO (Calendário e Horários) VEM AQUI */}
 
             <div style={{...cardStyle, boxShadow: modernTheme.shadow, marginTop: "15px"}}>
               <h3 style={{borderBottom: `2px solid ${primaryColor}`, paddingBottom: "10px", color: modernTheme.text, margin: "0 0 15px 0"}}>📅 Dia {selectedDate.toLocaleDateString("pt-BR")}</h3>
@@ -1404,6 +1552,7 @@ ${appointments.map(a => {
 
                   const app = getAppDoHorario(hora);
                   const isStart = app && new Date(app.dataHora).getHours() === hora;
+                  
 
                   return (
                     <div key={hora} style={{ 
@@ -1828,6 +1977,31 @@ ${appointments.map(a => {
                       Escolha a cor que melhor representa seu salão. Isso mudará todos os botões, títulos e destaques do sistema!
                     </div>
                   </div>
+                  {/* Adicione isso dentro da aba de Perfil, na parte de edição */}
+<label style={labelStyle}>🎭 Estilo Visual do App</label>
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "20px" }}>
+  {Object.values(TEMAS).map(t => (
+    <div 
+      key={t.id}
+      onClick={() => {
+        // Atualiza localmente para ver o brilho na hora
+        setProfile({...profile, themeId: t.id});
+        setPrimaryColor(t.primary); 
+      }}
+      style={{
+        padding: "10px",
+        borderRadius: "10px",
+        border: `2px solid ${profile?.themeId === t.id ? t.primary : "#eee"}`,
+        backgroundColor: t.background,
+        cursor: "pointer",
+        textAlign: "center"
+      }}
+    >
+      <div style={{ width: "20px", height: "20px", borderRadius: "50%", backgroundColor: t.primary, margin: "0 auto 5px" }}></div>
+      <small style={{ color: t.text, fontSize: "10px", fontWeight: "bold" }}>{t.nome}</small>
+    </div>
+  ))}
+</div>
 
                   <label style={labelStyle}>📷 Logo do Salão</label>
                   <input 
@@ -2377,22 +2551,48 @@ ${appointments.map(a => {
               <option value="">Selecione o Serviço</option>
               {services.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
             </select>
-            <button onClick={async () => {
-              const dFinal = new Date(selectedDate); dFinal.setHours(selHora, 0, 0, 0);
-              const d = { clientId: selCliente, serviceId: selServico, dataHora: dFinal.toISOString(), status: "pendente", tenantId: user.uid };
-              if(editAppId) await updateDoc(doc(db, "appointments", editAppId), d);
-              else await addDoc(collection(db, "appointments"), d);
-              setShowModal(false); loadData(user.uid);
-            }} style={{...btnStyle, backgroundColor: modernTheme.success}}>Confirmar</button>
+            {/* ... final do código do modal de agendamento que já existe ... */}
             <button onClick={() => setShowModal(false)} style={{...btnStyle, backgroundColor: "#ccc", marginTop: "10px"}}>Cancelar</button>
           </div>
         </div>
       )}
-    </div>
-  );
-}
+
+      {/* 🟢 O MODAL DE PAGAMENTO ENTRA AQUI (DENTRO DA DIV PRINCIPAL) */}
+      {showPaymentModal && selectedAppForPayment && (
+        <div style={modalOverlay}>
+          <div style={{...modalContent, borderTop: `4px solid ${modernTheme.success}`}}>
+            <h3 style={{color: modernTheme.success}}>💰 Confirmar Pagamento</h3>
+            <p style={{fontSize: "14px", color: modernTheme.text}}>
+              Deseja confirmar o recebimento do pagamento de <strong>{getNome(clients, selectedAppForPayment.clientId)}</strong>?
+            </p>
+            <div style={{padding: "10px", backgroundColor: "#f9f9f9", borderRadius: "8px", marginBottom: "15px"}}>
+              <small>Serviço: {getNome(services, selectedAppForPayment.serviceId)}</small><br/>
+              <strong>Valor: R$ {services.find(s => s.id === selectedAppForPayment.serviceId)?.preco.toFixed(2)}</strong>
+            </div>
+            
+            <label style={labelStyle}>Forma de Recebimento:</label>
+            <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} style={inputStyle}>
+              <option value="pix">📲 Pix</option>
+              <option value="dinheiro">💵 Dinheiro</option>
+              <option value="cartao">💳 Cartão</option>
+            </select>
+
+            <button onClick={confirmPayment} style={{...btnStyle, backgroundColor: modernTheme.success}}>✅ Confirmar e Salvar no Caixa</button>
+            <button onClick={() => setShowPaymentModal(false)} style={{...btnStyle, backgroundColor: "#ccc", marginTop: "10px"}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+    </div> // ⬅️ Penúltima chave (fecha a div principal)
+  ); // ⬅️ Fecha o return
+} // ⬅️ ÚLTIMA CHAVE (fecha a função App)
 
 // ========== ESTILOS E AUXILIARES (FORA DO APP) ==========
+// Seus estilos começam logo abaixo daqui...
+
+
+// ========== ESTILOS E AUXILIARES (FORA DO APP) ==========
+
 const nomeMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 const calcTotal = (list, p) => {
