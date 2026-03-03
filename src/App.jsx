@@ -1207,51 +1207,88 @@ ${appointments.map(a => {
   };
 
   if (!user) {
-    return (
-      <div style={{ 
-        padding: "40px 20px", 
-        fontFamily: "sans-serif", 
-        textAlign: "center", 
-        minHeight: "100vh", 
-        display: "flex", 
-        flexDirection: "column", 
-        justifyContent: "center", 
-        alignItems: "center", 
-        backgroundColor: modernTheme.background,
-        background: `linear-gradient(135deg, ${modernTheme.background} 0%, ${primaryColor}10 100%)`
+  return (
+    <div style={{ 
+      padding: "40px 20px", 
+      fontFamily: "'Inter', sans-serif", 
+      textAlign: "center", 
+      minHeight: "100vh", 
+      display: "flex", 
+      flexDirection: "column", 
+      justifyContent: "center", 
+      alignItems: "center", 
+      // Fundo inspirado na textura de mármore e tons navy/gold
+      background: `linear-gradient(135deg, #f5f5f2 0%, #e0dcd3 100%)`,
+      backgroundImage: `url('https://www.transparenttextures.com/patterns/white-marble.png')` 
+    }}>
+      {/* 1. IMAGEM DA LOGOMARCA (Substituindo o texto) */}
+      <img 
+        src="LINK_DA_SUA_IMAGEM_1_AQUI" 
+        alt="Pra agendar" 
+        style={{ width: "220px", marginBottom: "30px", filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.1))" }} 
+      />
+
+      {/* 2. CARD DE LOGIN ESTILO PREMIUM */}
+      <div style={{
+        backgroundColor: "rgba(255, 255, 255, 0.7)",
+        backdropFilter: "blur(15px)", // Efeito de vidro
+        padding: "30px",
+        borderRadius: "20px",
+        width: "100%",
+        maxWidth: "380px",
+        boxShadow: "0 10px 40px rgba(0,0,0,0.1)",
+        border: "1px solid rgba(255,255,255,0.5)"
       }}>
-        <h1 style={{ color: primaryColor, marginBottom: "10px", fontSize: "3rem", fontWeight: "800" }}>✨ Pragendar R$</h1>
-        <p style={{ color: modernTheme.textMuted, marginBottom: "40px", fontSize: "14px", fontWeight: "500" }}>Sistema Premium de Gestão de Agendamentos + SaaS</p>
-        <div style={{...cardStyle, width: "100%", maxWidth: "380px", boxShadow: modernTheme.shadowHeavy}}>
-          <h3 style={{marginTop: 0, color: primaryColor}}>{authTab === "login" ? "🔐 Entrar" : "📝 Criar Conta"}</h3>
-          <form onSubmit={handleAuth}>
+        <h3 style={{ marginTop: 0, color: "#2c3e50", fontWeight: "700" }}>
+          {authTab === "login" ? "Bem-vinda ao Pragendar" : "Criar sua conta Premium"}
+        </h3>
+        
+        <form onSubmit={handleAuth}>
+          <div style={{ textAlign: "left", marginBottom: "15px" }}>
+            <label style={{ fontSize: "12px", fontWeight: "bold", color: "#7f8c8d", marginLeft: "5px" }}>E-mail</label>
             <input 
-              placeholder="📧 E-mail" 
+              placeholder="seu@email.com" 
               type="email"
               value={email} 
               onChange={e => setEmail(e.target.value)} 
-              style={inputStyle} 
+              style={{ ...inputStyle, backgroundColor: "rgba(255,255,255,0.8)", border: "1px solid #dcdde1" }} 
               required
             />
+          </div>
+
+          <div style={{ textAlign: "left", marginBottom: "20px" }}>
+            <label style={{ fontSize: "12px", fontWeight: "bold", color: "#7f8c8d", marginLeft: "5px" }}>Senha</label>
             <input 
-              placeholder="🔑 Senha" 
+              placeholder="••••••••" 
               type="password" 
               value={password} 
               onChange={e => setPassword(e.target.value)} 
-              style={inputStyle}
+              style={{ ...inputStyle, backgroundColor: "rgba(255,255,255,0.8)", border: "1px solid #dcdde1" }}
               required
             />
-            <button type="submit" style={{...btnStyle, background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}dd)`}}>
-              {authTab === "login" ? "Entrar" : "Cadastrar"}
-            </button>
-          </form>
-          <p onClick={() => setAuthTab(authTab === "login" ? "cadastro" : "login")} style={{ cursor: "pointer", color: primaryColor, marginTop: "15px", fontSize: "14px", fontWeight: "bold" }}>
-            {authTab === "login" ? "👤 Novo por aqui? Cadastre-se" : "✅ Já tem conta? Faça Login"}
-          </p>
-        </div>
+          </div>
+
+          <button type="submit" style={{
+            ...btnStyle, 
+            background: `linear-gradient(135deg, #6b4f7a, #4a3457)`, // Tom Amethyst/Deep Navy
+            boxShadow: "0 4px 15px rgba(74, 52, 87, 0.3)",
+            fontSize: "16px",
+            letterSpacing: "1px"
+          }}>
+            {authTab === "login" ? "Entrar" : "Finalizar Cadastro"}
+          </button>
+        </form>
+
+        <p 
+          onClick={() => setAuthTab(authTab === "login" ? "cadastro" : "login")} 
+          style={{ cursor: "pointer", color: "#6b4f7a", marginTop: "20px", fontSize: "14px", fontWeight: "600" }}
+        >
+          {authTab === "login" ? "Ainda não tem conta? Toque aqui" : "Já possui conta? Entrar agora"}
+        </p>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   return (
     <div style={{ backgroundColor: modernTheme.background, minHeight: "100vh", paddingBottom: "100px", fontFamily: "sans-serif" }}>
