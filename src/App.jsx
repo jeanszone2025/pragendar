@@ -911,6 +911,7 @@ async function loadProfile(uid) {
         gradeHorarios,
         primaryColor,
         // 🆕 SALVAR DADOS DO SaaS
+        themeId: profile?.themeId || "classic"
         chavePix,
         linkCartao,
         porcentagemSinal: Number(porcentagemSinal),
@@ -2564,7 +2565,31 @@ ${appointments.map(a => {
     </div>
   );
 }
+{/* ========== MODAL DE CONFIRMAÇÃO DE PAGAMENTO (ADICIONADO) ========== */}
+{showPaymentModal && selectedAppForPayment && (
+  <div style={modalOverlay}>
+    <div style={{...modalContent, borderTop: `4px solid ${modernTheme.success}`}}>
+      <h3 style={{color: modernTheme.success}}>💰 Confirmar Pagamento</h3>
+      <p style={{fontSize: "14px", color: modernTheme.text}}>
+        Deseja confirmar o recebimento do pagamento de <strong>{getNome(clients, selectedAppForPayment.clientId)}</strong>?
+      </p>
+      <div style={{padding: "10px", backgroundColor: "#f9f9f9", borderRadius: "8px", marginBottom: "15px"}}>
+        <small>Serviço: {getNome(services, selectedAppForPayment.serviceId)}</small><br/>
+        <strong>Valor: R$ {services.find(s => s.id === selectedAppForPayment.serviceId)?.preco.toFixed(2)}</strong>
+      </div>
+      
+      <label style={labelStyle}>Forma de Recebimento:</label>
+      <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} style={inputStyle}>
+        <option value="pix">📲 Pix</option>
+        <option value="dinheiro">💵 Dinheiro</option>
+        <option value="cartao">💳 Cartão</option>
+      </select>
 
+      <button onClick={confirmPayment} style={{...btnStyle, backgroundColor: modernTheme.success}}>✅ Confirmar e Salvar no Caixa</button>
+      <button onClick={() => setShowPaymentModal(false)} style={{...btnStyle, backgroundColor: "#ccc", marginTop: "10px"}}>Cancelar</button>
+    </div>
+  </div>
+)}
 // ========== ESTILOS E AUXILIARES (FORA DO APP) ==========
 
 const nomeMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
