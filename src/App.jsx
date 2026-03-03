@@ -10,7 +10,39 @@ import {
 } from "firebase/auth";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, auth, storage } from "./firebase";
-
+// 🟢 COLE ISSO AQUI (Aproximadamente linha 15)
+const TEMAS = {
+  premium: {
+    id: "premium",
+    nome: "Ametista & Mármore",
+    primary: "#6b4f7a",
+    secondary: "#b89b6a",
+    background: "#f5f5f2",
+    backgroundImage: "url('https://www.transparenttextures.com/patterns/white-marble.png')",
+    card: "rgba(255, 255, 255, 0.8)",
+    text: "#2c3e50"
+  },
+  barbearia: {
+    id: "barbearia",
+    nome: "Industrial & Dark",
+    primary: "#2c3e50",
+    secondary: "#7f8c8d",
+    background: "#1a1a1a",
+    backgroundImage: "url('https://www.transparenttextures.com/patterns/carbon-fibre.png')",
+    card: "#252525",
+    text: "#ecf0f1"
+  },
+  classic: {
+    id: "classic",
+    nome: "Clean & Soft",
+    primary: "#d81b60",
+    secondary: "#f06292",
+    background: "#fdfbfb",
+    backgroundImage: "none",
+    card: "#ffffff",
+    text: "#2d3436"
+  }
+};
 // ========== COMPONENTE: PÁGINA DE AGENDAMENTO PARA CLIENTES ==========
 function PaginaAgendamentoCliente({ tenantId }) {
   const [profile, setProfile] = useState(null);
@@ -25,15 +57,21 @@ function PaginaAgendamentoCliente({ tenantId }) {
   const [step, setStep] = useState(1); // 1: Serviço, 2: Data/Hora, 3: Confirmação, 4: Pagamento
   const [appointments, setAppointments] = useState([]);
 
-  const modernTheme = {
-    primary: profile?.primaryColor || "#d81b60",
-    background: "#f8f9fa",
-    card: "#ffffff",
-    text: "#2d3436",
-    textLight: "#636e72",
-    shadow: "0 4px 15px rgba(0,0,0,0.08)",
-    radius: "12px"
-  };
+  // Procure onde você definiu o modernTheme e substitua por isso:
+const temaId = profile?.themeId || "classic";
+const temaAtual = TEMAS[temaId];
+
+const modernTheme = {
+  // Aqui pegamos a cor direto do perfil do banco de dados
+  primary: profile?.primaryColor || temaAtual.primary, 
+  background: temaAtual.background,
+  backgroundImage: temaAtual.backgroundImage,
+  card: temaAtual.card,
+  text: temaAtual.text,
+  textLight: "#7f8c8d",
+  radius: "16px",
+  shadow: "0 8px 32px rgba(0,0,0,0.1)"
+};
 
   useEffect(() => {
     loadPublicProfile();
@@ -649,15 +687,28 @@ export default function App() {
   const [aiChatHistory, setAiChatHistory] = useState([]);
 
   // ========== THEME ENGINE ==========
-  const modernTheme = {
-    primary: primaryColor,
-    primaryLight: primaryColor + "20",
-    background: "#f8f9fa",
-    card: "#ffffff",
-    text: "#2d3436",
-    shadow: "0 4px 15px rgba(0,0,0,0.08)",
-    radius: "12px"
-  };
+  // ========== THEME ENGINE DINÂMICO ==========
+const temaIdAdmin = profile?.themeId || "classic";
+const temaAtualAdmin = TEMAS[temaIdAdmin];
+
+const modernTheme = {
+  primary: primaryColor,
+  primaryLight: primaryColor + "20",
+  background: temaAtualAdmin.background,
+  backgroundImage: temaAtualAdmin.backgroundImage, 
+  card: temaAtualAdmin.card,
+  text: temaAtualAdmin.text,
+  textMuted: "#95a5a6",
+  danger: "#e74c3c",
+  success: "#27ae60",
+  warning: "#f1c40f",
+  info: "#3498db",
+  shadow: "0 4px 15px rgba(0,0,0,0.08)",
+  shadowHeavy: "0 8px 25px rgba(0,0,0,0.15)",
+  radius: "12px",
+  radiusSmall: "8px",
+  radiusTiny: "6px"
+};
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (loggedUser) => {
@@ -1291,7 +1342,15 @@ ${appointments.map(a => {
 }
 
   return (
-    <div style={{ backgroundColor: modernTheme.background, minHeight: "100vh", paddingBottom: "100px", fontFamily: "sans-serif" }}>
+  <div style={{ 
+    backgroundColor: modernTheme.background, 
+    backgroundImage: modernTheme.backgroundImage, // ADICIONADO
+    backgroundAttachment: "fixed",               // ADICIONADO
+    backgroundSize: "cover",                      // ADICIONADO
+    minHeight: "100vh", 
+    paddingBottom: "100px", 
+    fontFamily: "sans-serif" 
+  }}>
       
       <header style={{ 
         display: "flex", 
@@ -1916,6 +1975,31 @@ ${appointments.map(a => {
                       Escolha a cor que melhor representa seu salão. Isso mudará todos os botões, títulos e destaques do sistema!
                     </div>
                   </div>
+                  {/* Adicione isso dentro da aba de Perfil, na parte de edição */}
+<label style={labelStyle}>🎭 Estilo Visual do App</label>
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "20px" }}>
+  {Object.values(TEMAS).map(t => (
+    <div 
+      key={t.id}
+      onClick={() => {
+        // Atualiza localmente para ver o brilho na hora
+        setProfile({...profile, themeId: t.id});
+        setPrimaryColor(t.primary); 
+      }}
+      style={{
+        padding: "10px",
+        borderRadius: "10px",
+        border: `2px solid ${profile?.themeId === t.id ? t.primary : "#eee"}`,
+        backgroundColor: t.background,
+        cursor: "pointer",
+        textAlign: "center"
+      }}
+    >
+      <div style={{ width: "20px", height: "20px", borderRadius: "50%", backgroundColor: t.primary, margin: "0 auto 5px" }}></div>
+      <small style={{ color: t.text, fontSize: "10px", fontWeight: "bold" }}>{t.nome}</small>
+    </div>
+  ))}
+</div>
 
                   <label style={labelStyle}>📷 Logo do Salão</label>
                   <input 
@@ -2481,6 +2565,7 @@ ${appointments.map(a => {
 }
 
 // ========== ESTILOS E AUXILIARES (FORA DO APP) ==========
+
 const nomeMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 const calcTotal = (list, p) => {
