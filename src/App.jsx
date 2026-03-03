@@ -1223,7 +1223,7 @@ ${appointments.map(a => {
     }}>
       {/* 1. IMAGEM DA LOGOMARCA (Substituindo o texto) */}
       <img 
-        src="LINK_DA_SUA_IMAGEM_1_AQUI" 
+        src="gs://teste-pra-agendar.firebasestorage.app/4979208921616682355.png" 
         alt="Pra agendar" 
         style={{ width: "220px", marginBottom: "30px", filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.1))" }} 
       />
