@@ -28,7 +28,7 @@ const TEMAS = {
     primary: "#2c3e50",
     secondary: "#7f8c8d",
     background: "#1a1a1a",
-    backgroundImage: "url('https://firebasestorage.googleapis.com/v0/b/teste-pra-agendar.firebasestorage.app/o/4988233506899037033.jpg?alt=media&token=8143cd61-c4ce-4e37-b986-0c6be7158b68')",
+    backgroundImage: "url('https://firebasestorage.googleapis.com/v0/b/teste-pra-agendar.firebasestorage.app/o/4988233506899037046.jpg?alt=media&token=f5f333ae-f631-4def-bb13-da68e29206f2')",
     card: "#252525",
     text: "#ecf0f1"
   },
@@ -911,7 +911,7 @@ async function loadProfile(uid) {
         gradeHorarios,
         primaryColor,
         // 🆕 SALVAR DADOS DO SaaS
-        themeId: profile?.themeId || "classic"
+        themeId: profile?.themeId || "classic",
         chavePix,
         linkCartao,
         porcentagemSinal: Number(porcentagemSinal),
