@@ -18,7 +18,7 @@ const TEMAS = {
     primary: "#6b4f7a",
     secondary: "#b89b6a",
     background: "#f5f5f2",
-    backgroundImage: "url('https://www.transparenttextures.com/patterns/white-marble.png')",
+    backgroundImage: "url('https://firebasestorage.googleapis.com/v0/b/teste-pra-agendar.firebasestorage.app/o/4988233506899037035.jpg?alt=media&token=f4b6ba30-4e56-4623-8e09-2e7227db5f39')",
     card: "rgba(255, 255, 255, 0.8)",
     text: "#2c3e50"
   },
@@ -28,7 +28,7 @@ const TEMAS = {
     primary: "#2c3e50",
     secondary: "#7f8c8d",
     background: "#1a1a1a",
-    backgroundImage: "url('https://www.transparenttextures.com/patterns/carbon-fibre.png')",
+    backgroundImage: "url('https://firebasestorage.googleapis.com/v0/b/teste-pra-agendar.firebasestorage.app/o/4988233506899037033.jpg?alt=media&token=8143cd61-c4ce-4e37-b986-0c6be7158b68')",
     card: "#252525",
     text: "#ecf0f1"
   },
@@ -38,7 +38,7 @@ const TEMAS = {
     primary: "#d81b60",
     secondary: "#f06292",
     background: "#fdfbfb",
-    backgroundImage: "none",
+    backgroundImage: "url('https://firebasestorage.googleapis.com/v0/b/teste-pra-agendar.firebasestorage.app/o/4988233506899037036.jpg?alt=media&token=ce8b15d3-48ef-4689-9c11-51ca2f2a63f3')",
     card: "#ffffff",
     text: "#2d3436"
   }
@@ -1346,7 +1346,8 @@ ${appointments.map(a => {
     backgroundColor: modernTheme.background, 
     backgroundImage: modernTheme.backgroundImage, // ADICIONADO
     backgroundAttachment: "fixed",               // ADICIONADO
-    backgroundSize: "cover",                      // ADICIONADO
+    backgroundSize: "cover",
+    backgroundPosition: "center",
     minHeight: "100vh", 
     paddingBottom: "100px", 
     fontFamily: "sans-serif" 
