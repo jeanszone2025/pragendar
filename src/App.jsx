@@ -56,6 +56,7 @@ function PaginaAgendamentoCliente({ tenantId }) {
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState(1); // 1: Serviço, 2: Data/Hora, 3: Confirmação, 4: Pagamento
   const [appointments, setAppointments] = useState([]);
+  const [metaClientes, setMetaClientes] = useState(60);
 
   // Procure onde você definiu o modernTheme e substitua por isso:
 const temaId = profile?.themeId || "classic";
@@ -779,6 +780,7 @@ async function loadProfile(uid) {
       setHorarioFechamento(data.horarioFechamento || "19:00");
       setFidelidadeLimit(data.fidelidadeLimit || 10);
       setPrimaryColor(data.primaryColor || "#d81b60");
+      setMetaClientes(data.metaClientes || 60);
 
       // 2. 🆕 Dados do SaaS (Sinal e Pagamentos)
       setChavePix(data.chavePix || "");
@@ -927,6 +929,7 @@ async function loadProfile(uid) {
         linkCartao,
         porcentagemSinal: Number(porcentagemSinal),
         termosUso,
+        metaClientes: Number(metaClientes),
         updatedAt: new Date().toISOString()
       }, { merge: true });
 
@@ -1675,46 +1678,48 @@ ${appointments.map(a => {
         )}
 
         {/* === ABA FINANCEIRO === */}
-        {tab === "financeiro" && (
-          <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
-            {(() => {
-              // 1️⃣ LÓGICA DE CÁLCULO (Blindagem contra erros de dados nulos)
-              const chart = getChartData() || { total: "0.00", dinheiro: 0, cartao: 0, pix: 0, valores: { dinheiro: 0, cartao: 0, pix: 0 } };
-              const mesAtual = new Date().getMonth();
-              const anoAtual = new Date().getFullYear();
+        {/* === ABA FINANCEIRO === */}
+{tab === "financeiro" && (
+  <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
+    {(() => {
+      const hoje = new Date();
+      const hojeFmt = hoje.toLocaleDateString("pt-BR");
+      
+      // Cálculo do início da semana (último domingo)
+      const inicioSemana = new Date(hoje);
+      inicioSemana.setDate(hoje.getDate() - hoje.getDay());
+      inicioSemana.setHours(0,0,0,0);
 
-              const transMes = (transactions || []).filter(t => {
-                const d = new Date(t.data);
-                return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
-              });
+      const mesAtual = hoje.getMonth();
+      const anoAtual = hoje.getFullYear();
 
-              const appsMes = (appointments || []).filter(a => {
-                const d = new Date(a.dataHora);
-                return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
-              });
+      // Filtros de Transações
+      const tDia = transactions.filter(t => new Date(t.data).toLocaleDateString("pt-BR") === hojeFmt);
+      const tSemana = transactions.filter(t => new Date(t.data) >= inicioSemana);
+      const tMes = transactions.filter(t => {
+        const d = new Date(t.data);
+        return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
+      });
 
-              const despDinheiro = transMes.filter(t => t.tipo === "despesa" && t.formaPagamento === "dinheiro").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
-              const despCartao = transMes.filter(t => t.tipo === "despesa" && t.formaPagamento === "cartao").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
-              const despPix = transMes.filter(t => t.tipo === "despesa" && t.formaPagamento === "pix").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
-              const totalDesp = despDinheiro + despCartao + despPix;
+      // Cálculos de ENTRADAS (Receita)
+      const recDia = tDia.filter(t => t.tipo === "receita").reduce((acc, t) => acc + t.valor, 0);
+      const recSemana = tSemana.filter(t => t.tipo === "receita").reduce((acc, t) => acc + t.valor, 0);
+      const recMes = tMes.filter(t => t.tipo === "receita").reduce((acc, t) => acc + t.valor, 0);
 
-              const clientesUnicos = [...new Set(appsMes.map(a => a.clientId))];
-              const totalClientes = clientesUnicos.length;
-              const retornosMarked = clientesUnicos.filter(id => (appointments || []).some(a => a.clientId === id && new Date(a.dataHora) > new Date())).length;
-              
-              const pDin = totalDesp > 0 ? ((despDinheiro/totalDesp)*100).toFixed(0) : 0;
-              const pCar = totalDesp > 0 ? ((despCartao/totalDesp)*100).toFixed(0) : 0;
-              const pPix = totalDesp > 0 ? ((despPix/totalDesp)*100).toFixed(0) : 0;
+      // Cálculos de GASTOS (Despesa)
+      const despDia = tDia.filter(t => t.tipo === "despesa").reduce((acc, t) => acc + t.valor, 0);
+      const despSemana = tSemana.filter(t => t.tipo === "despesa").reduce((acc, t) => acc + t.valor, 0);
+      const despMes = tMes.filter(t => t.tipo === "despesa").reduce((acc, t) => acc + t.valor, 0);
 
-              const contagemServicos = appsMes.reduce((acc, a) => {
-                const nomeS = getNome(services, a.serviceId) || "Outros";
-                acc[nomeS] = (acc[nomeS] || 0) + 1;
-                return acc;
-              }, {});
+      // Métrica de Clientes (Mês)
+      const appsMes = appointments.filter(a => {
+        const d = new Date(a.dataHora);
+        return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
+      });
+      const totalClientes = [...new Set(appsMes.map(a => a.clientId))].length;
 
-              // 2️⃣ RETORNO VISUAL ÚNICO
-              return (
-                <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+      return (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
                   
                   {/* CARD DE ENTRADAS */}
                   <div style={{...cardStyle, boxShadow: modernTheme.shadow, background: `linear-gradient(135deg, ${modernTheme.card} 0%, ${primaryColor}05 100%)`}}>
@@ -1735,27 +1740,77 @@ ${appointments.map(a => {
                     <small style={{fontSize: "10px", color: modernTheme.textMuted}}>Dinheiro: {pDin}% | Cartão: {pCar}% | Pix: {pPix}%</small>
                   </div>
 
-                  {/* CARD DE PERFORMANCE */}
-                  <div style={{...cardStyle, boxShadow: modernTheme.shadow}}>
-                    <h3 style={{color: primaryColor, marginBottom: "15px"}}>🎯 Metas de Clientes</h3>
-                    <div style={{display: "flex", justifyContent: "space-between", marginBottom: "8px", fontSize: "13px"}}>
-                      <span>Atingido: <strong>{totalClientes}</strong></span>
-                      <span>Meta: 60</span>
-                    </div>
-                    <div style={{width:"100%", height:"12px", backgroundColor: "#eee", borderRadius: "10px", overflow: "hidden", marginBottom: "15px"}}>
-                      <div style={{width: `${Math.min((totalClientes/60)*100, 100)}%`, height: "100%", backgroundColor: modernTheme.success}}></div>
-                    </div>
-                    <div style={{display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px"}}>
-                      <div style={{padding: "10px", backgroundColor: "#e8f5e9", borderRadius: "8px", textAlign: "center"}}>
-                        <small style={{color: "#2e7d32", fontSize: "11px"}}>Retornos</small><br/>
-                        <strong style={{color: "#2e7d32"}}>{retornosMarked}</strong>
-                      </div>
-                      <div style={{padding: "10px", backgroundColor: "#fff3e0", borderRadius: "8px", textAlign: "center"}}>
-                        <small style={{color: "#ef6c00", fontSize: "11px"}}>A Agendar</small><br/>
-                        <strong style={{color: "#ef6c00"}}>{totalClientes - retornosMarked}</strong>
+                 <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+                  
+                  {/* 📈 CARD DE ENTRADAS (REVISADO) */}
+                  <div style={{...cardStyle, boxShadow: modernTheme.shadow, borderLeft: `5px solid ${modernTheme.success}`}}>
+                    <h3 style={{color: modernTheme.success, marginBottom: "15px"}}>📈 Recebidos</h3>
+                    <div style={{display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", textAlign: "center"}}>
+                      <div><small style={{color: "#999", fontSize: "11px"}}>Hoje</small><br/><strong style={{fontSize: "13px"}}>R$ {recDia.toFixed(2)}</strong></div>
+                      <div><small style={{color: "#999", fontSize: "11px"}}>Semana</small><br/><strong style={{fontSize: "13px"}}>R$ {recSemana.toFixed(2)}</strong></div>
+                      <div style={{backgroundColor: modernTheme.primaryLight, borderRadius: "8px", padding: "5px"}}>
+                        <small style={{color: primaryColor, fontSize: "11px", fontWeight: "bold"}}>Mês</small><br/>
+                        <strong style={{color: primaryColor, fontSize: "13px"}}>R$ {recMes.toFixed(2)}</strong>
                       </div>
                     </div>
                   </div>
+
+                  {/* 📉 CARD DE GASTOS (REVISADO) */}
+                  <div style={{...cardStyle, boxShadow: modernTheme.shadow, borderLeft: `5px solid ${modernTheme.danger}`}}>
+                    <h3 style={{color: modernTheme.danger, marginBottom: "15px"}}>📉 Gastos</h3>
+                    <div style={{display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", textAlign: "center"}}>
+                      <div><small style={{color: "#999", fontSize: "11px"}}>Hoje</small><br/><strong style={{fontSize: "13px"}}>R$ {despDia.toFixed(2)}</strong></div>
+                      <div><small style={{color: "#999", fontSize: "11px"}}>Semana</small><br/><strong style={{fontSize: "13px"}}>R$ {despSemana.toFixed(2)}</strong></div>
+                      <div style={{backgroundColor: "#fee2e2", borderRadius: "8px", padding: "5px"}}>
+                        <small style={{color: "#b91c1c", fontSize: "11px", fontWeight: "bold"}}>Mês</small><br/>
+                        <strong style={{color: "#b91c1c", fontSize: "13px"}}>R$ {despMes.toFixed(2)}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 🎯 CARD DE METAS E PERFORMANCE (DINÂMICO) */}
+                  <div style={{...cardStyle, boxShadow: modernTheme.shadow}}>
+                    <h3 style={{color: primaryColor, marginBottom: "15px"}}>🎯 Performance do Mês</h3>
+                    
+                    <div style={{display: "flex", justifyContent: "space-between", marginBottom: "8px", fontSize: "13px"}}>
+                      <span>Clientes: <strong>{totalClientes}</strong></span>
+                      <span>Meta: <strong>{metaClientes || 60}</strong></span>
+                    </div>
+
+                    {/* Barra de Progresso Dinâmica */}
+                    <div style={{width:"100%", height:"12px", backgroundColor: "#eee", borderRadius: "10px", overflow: "hidden", marginBottom: "20px"}}>
+                      <div style={{
+                        width: `${Math.min((totalClientes / (metaClientes || 60)) * 100, 100)}%`, 
+                        height: "100%", 
+                        backgroundColor: totalClientes >= (metaClientes || 60) ? "#d4af37" : modernTheme.success,
+                        transition: "width 0.5s ease-in-out"
+                      }}></div>
+                    </div>
+
+                    {/* Grid de Retornos e Agendamentos */}
+                    <div style={{display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px"}}>
+                      <div style={{padding: "12px", backgroundColor: "#e8f5e9", borderRadius: "10px", textAlign: "center", border: "1px solid #c8e6c9"}}>
+                        <small style={{color: "#2e7d32", fontSize: "11px", fontWeight: "bold"}}>COM RETORNO</small><br/>
+                        <strong style={{fontSize: "18px", color: "#2e7d32"}}>{retornosMarked}</strong>
+                      </div>
+                      <div style={{padding: "12px", backgroundColor: "#fff3e0", borderRadius: "10px", textAlign: "center", border: "1px solid #ffe0b2"}}>
+                        <small style={{color: "#ef6c00", fontSize: "11px", fontWeight: "bold"}}>A AGENDAR</small><br/>
+                        <strong style={{fontSize: "18px", color: "#ef6c00"}}>{totalClientes - retornosMarked}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* RANKING DE SERVIÇOS (Mantendo o que você já tinha) */}
+                  <div style={{...cardStyle, boxShadow: modernTheme.shadow}}>
+                    <h3 style={{color: primaryColor, marginBottom: "15px"}}>📊 Ranking de Serviços</h3>
+                    {Object.entries(contagemServicos).sort((a,b)=>b[1]-a[1]).map(([nome, qtd]) => (
+                      <div key={nome} style={{display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #eee", fontSize: "13px"}}>
+                        <span>{nome}</span><strong>{qtd}x</strong>
+                      </div>
+                    ))}
+                  </div>
+
+                </div>
 
                   {/* CARD DE RANKING */}
                   <div style={{...cardStyle, boxShadow: modernTheme.shadow}}>
