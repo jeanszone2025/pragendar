@@ -1819,15 +1819,15 @@ ${appointments.map(a => {
                   <button onClick={() => {setEditId(t.id); setDescFin(t.descricao); setValorFin(t.valor); setTipoFin(t.tipo); setFormaPagamento(t.formaPagamento || "dinheiro")}} style={btnEdit}>✏️</button>
                   <button onClick={() => deleteWithConfirm("transactions", t.id, t.descricao)} style={btnDel}>🗑️</button>
                 </div>
-              ))
-            )}
-          </div>
-        )}
+                );
+              })()} {/* 👈 Fecha a função de cálculos (IIFE) */}
+            </div> {/* 👈 Fecha a div de animação do Financeiro */}
+          )} {/* 👈 Fecha o bloco {tab === "financeiro" && ... } */}
 
-        {/* === ABA CLIENTES === */}
-        {tab === "clientes" && (
-          <div>
-            <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
+          {/* === ABA CLIENTES === */}
+          {tab === "clientes" && (
+            <div>
+              <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
               <h3 style={{color: primaryColor, marginBottom: "15px"}}>{editId ? "✏️ Editar" : "👤 Novo"} Cliente</h3>
               <input placeholder="👤 Nome Completo" value={nomeCliente} onChange={e => setNomeCliente(e.target.value)} style={inputStyle} />
               <input placeholder="📱 Telefone" value={telefone} onChange={e => setTelefone(e.target.value)} style={inputStyle} />
