@@ -1678,7 +1678,7 @@ ${appointments.map(a => {
         )}
 
         {/* === ABA FINANCEIRO === */}
-        {/* === ABA FINANCEIRO === */}
+        // ========== ABA FINANCEIRO ==========
 {tab === "financeiro" && (
   <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
     {(() => {
@@ -1694,14 +1694,14 @@ ${appointments.map(a => {
       const anoAtual = hoje.getFullYear();
 
       // Filtros de Transações
-      const tDia = transactions.filter(t => new Date(t.data).toLocaleDateString("pt-BR") === hojeFmt);
-      const tSemana = transactions.filter(t => new Date(t.data) >= inicioSemana);
+      const tDia = transactions.filter(t => t && t.data && new Date(t.data).toLocaleDateString("pt-BR") === hojeFmt);
+      const tSemana = transactions.filter(t => t && t.data && new Date(t.data) >= inicioSemana);
       const tMes = transactions.filter(t => {
+        if (!t || !t.data) return false;
         const d = new Date(t.data);
         return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
       });
 
-      // Cálculos de ENTRADAS (Receita)
       // Cálculos de ENTRADAS (Receita)
       const recDia = tDia.filter(t => t.tipo === "receita").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
       const recSemana = tSemana.filter(t => t.tipo === "receita").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
@@ -1714,129 +1714,139 @@ ${appointments.map(a => {
 
       // Métrica de Clientes (Mês)
       const appsMes = appointments.filter(a => {
+        if (!a || !a.dataHora) return false;
         const d = new Date(a.dataHora);
         return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
       });
-      const totalClientes = [...new Set(appsMes.map(a => a.clientId))].length;
-      const retornosMarked = appointments.filter(a => a.status === "pago").length; // Exemplo de lógica
+      const totalClientes = new Set(appsMes.map(a => a.clientId)).size;
+      const retornosMarked = appointments.filter(a => a.status === "pago").length;
 
       return (   
-                 <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
-                  
-                  {/* 📈 CARD DE ENTRADAS (REVISADO) */}
-                  <div style={{...cardStyle, boxShadow: modernTheme.shadow, borderLeft: `5px solid ${modernTheme.success}`}}>
-                    <h3 style={{color: modernTheme.success, marginBottom: "15px"}}>📈 Recebidos</h3>
-                    <div style={{display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", textAlign: "center"}}>
-                      <div><small style={{color: "#999", fontSize: "11px"}}>Hoje</small><br/><strong style={{fontSize: "13px"}}>R$ {recDia.toFixed(2)}</strong></div>
-                      <div><small style={{color: "#999", fontSize: "11px"}}>Semana</small><br/><strong style={{fontSize: "13px"}}>R$ {recSemana.toFixed(2)}</strong></div>
-                      <div style={{backgroundColor: modernTheme.primaryLight, borderRadius: "8px", padding: "5px"}}>
-                        <small style={{color: primaryColor, fontSize: "11px", fontWeight: "bold"}}>Mês</small><br/>
-                        <strong style={{color: primaryColor, fontSize: "13px"}}>R$ {recMes.toFixed(2)}</strong>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 📉 CARD DE GASTOS (REVISADO) */}
-                  <div style={{...cardStyle, boxShadow: modernTheme.shadow, borderLeft: `5px solid ${modernTheme.danger}`}}>
-                    <h3 style={{color: modernTheme.danger, marginBottom: "15px"}}>📉 Gastos</h3>
-                    <div style={{display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", textAlign: "center"}}>
-                      <div><small style={{color: "#999", fontSize: "11px"}}>Hoje</small><br/><strong style={{fontSize: "13px"}}>R$ {despDia.toFixed(2)}</strong></div>
-                      <div><small style={{color: "#999", fontSize: "11px"}}>Semana</small><br/><strong style={{fontSize: "13px"}}>R$ {despSemana.toFixed(2)}</strong></div>
-                      <div style={{backgroundColor: "#fee2e2", borderRadius: "8px", padding: "5px"}}>
-                        <small style={{color: "#b91c1c", fontSize: "11px", fontWeight: "bold"}}>Mês</small><br/>
-                        <strong style={{color: "#b91c1c", fontSize: "13px"}}>R$ {despMes.toFixed(2)}</strong>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 🎯 CARD DE METAS E PERFORMANCE (DINÂMICO) */}
-                  <div style={{...cardStyle, boxShadow: modernTheme.shadow}}>
-                    <h3 style={{color: primaryColor, marginBottom: "15px"}}>🎯 Performance do Mês</h3>
-                    
-                    <div style={{display: "flex", justifyContent: "space-between", marginBottom: "8px", fontSize: "13px"}}>
-                      <span>Clientes: <strong>{totalClientes}</strong></span>
-                      <span>Meta: <strong>{metaClientes || 60}</strong></span>
-                    </div>
-
-                    {/* Barra de Progresso Dinâmica */}
-                    <div style={{width:"100%", height:"12px", backgroundColor: "#eee", borderRadius: "10px", overflow: "hidden", marginBottom: "20px"}}>
-                      <div style={{
-                        width: `${Math.min((totalClientes / (metaClientes || 60)) * 100, 100)}%`, 
-                        height: "100%", 
-                        backgroundColor: totalClientes >= (metaClientes || 60) ? "#d4af37" : modernTheme.success,
-                        transition: "width 0.5s ease-in-out"
-                      }}></div>
-                    </div>
-
-                    {/* Grid de Retornos e Agendamentos */}
-                    <div style={{display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px"}}>
-                      <div style={{padding: "12px", backgroundColor: "#e8f5e9", borderRadius: "10px", textAlign: "center", border: "1px solid #c8e6c9"}}>
-                        <small style={{color: "#2e7d32", fontSize: "11px", fontWeight: "bold"}}>COM RETORNO</small><br/>
-                        <strong style={{fontSize: "18px", color: "#2e7d32"}}>{retornosMarked}</strong>
-                      </div>
-                      <div style={{padding: "12px", backgroundColor: "#fff3e0", borderRadius: "10px", textAlign: "center", border: "1px solid #ffe0b2"}}>
-                        <small style={{color: "#ef6c00", fontSize: "11px", fontWeight: "bold"}}>A AGENDAR</small><br/>
-                        <strong style={{fontSize: "18px", color: "#ef6c00"}}>{totalClientes - retornosMarked}</strong>
-                      </div>
-                    </div>
-                  </div>
-
-                {/* RESUMO HOJE/MÊS RÁPIDO */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                    <div style={{ ...cardStyle, border: `1px solid ${modernTheme.success}`, textAlign: "center" }}>
-                      <small>Hoje</small><br/><strong>R$ {calcTotal(transactions, "hoje").toFixed(2)}</strong>
-                    </div>
-                    <div style={{ ...cardStyle, border: `1px solid ${primaryColor}`, textAlign: "center" }}>
-                      <small>Mês</small><br/><strong>R$ {calcTotal(transactions, "mes").toFixed(2)}</strong>
-                    </div>
-                  </div>
-
-                  {/* FORMULÁRIO DE LANÇAMENTO */}
-                  <section style={{...cardStyle, boxShadow: modernTheme.shadow, marginTop: "10px"}}>
-                    <h3 style={{color: primaryColor, marginBottom: "15px"}}>{editId ? "✏️ Editar" : "➕ Novo"} Lançamento</h3>
-                    <select value={tipoFin} onChange={e => setTipoFin(e.target.value)} style={inputStyle}>
-                      <option value="receita">📈 Receita (Entrada)</option>
-                      <option value="despesa">📉 Despesa (Saída)</option>
-                    </select>
-                    <input type="date" value={dataManualFin} onChange={e => setDataManualFin(e.target.value)} style={inputStyle} />
-                    <input placeholder="Descrição" value={descFin} onChange={e => setDescFin(e.target.value)} style={inputStyle} />
-                    <input placeholder="Valor R$" type="number" step="0.01" value={valorFin} onChange={e => setValorFin(e.target.value)} style={inputStyle} />
-                    <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} style={inputStyle}>
-                      <option value="pix">📲 Pix</option>
-                      <option value="dinheiro">💵 Dinheiro</option>
-                      <option value="cartao">💳 Cartão</option>
-                    </select>
-                    <button onClick={handleSaveTransaction} style={{...btnStyle, background: tipoFin==="receita" ? modernTheme.success : modernTheme.danger}}>
-                      {editId ? "💾 Salvar Alteração" : "✅ Gravar no Caixa"}
-                    </button>
-                  </section>
-
-                  {/* EXTRATO DETALHADO */}
-                  <h3 style={{marginTop: "20px", fontSize: "16px"}}>📋 Extrato Recente</h3>
-                  {tMes.length === 0 ? (
-                    <p style={{textAlign: "center", color: "#999", fontSize: "13px"}}>Nenhuma transação este mês.</p>
-                  ) : (
-                    // Blindagem: Filtra itens corrompidos e garante que a data exista para não dar erro
-                    tMes.filter(t => t && t.data && t.valor !== undefined)
-                        .sort((a,b) => (b.data || "").localeCompare(a.data || ""))
-                        .slice(0, 10).map(t => (
-                      <div key={t.id} style={{...itemStyle, marginBottom: "8px", backgroundColor: "#fff", borderRadius: "8px"}}>
-                        <span style={{flex:1}}>
-                          <small style={{color: "#999"}}>{t.data ? new Date(t.data).toLocaleDateString() : "---"}</small><br/>
-                          <strong>{t.descricao || "Sem descrição"}</strong>
-                        </span>
-                        <strong style={{color: t.tipo === "receita" ? modernTheme.success : modernTheme.danger, marginLeft: "10px"}}>
-                          {t.tipo === "receita" ? "+" : "-"} R$ {(Number(t.valor) || 0).toFixed(2)}
-                        </strong>
-                      </div>
-                    ))
-                  )}
-                </div>
-              ); // 👈 Fim do Return Visual
-            })()} {/* 👈 Fim da IIFE */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+          
+          {/* 📈 CARD DE ENTRADAS */}
+          <div style={{...cardStyle, boxShadow: modernTheme.shadow, borderLeft: `5px solid ${modernTheme.success}`}}>
+            <h3 style={{color: modernTheme.success, marginBottom: "15px"}}>📈 Recebidos</h3>
+            <div style={{display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", textAlign: "center"}}>
+              <div><small style={{color: "#999", fontSize: "11px"}}>Hoje</small><br/><strong style={{fontSize: "13px"}}>R$ {recDia.toFixed(2)}</strong></div>
+              <div><small style={{color: "#999", fontSize: "11px"}}>Semana</small><br/><strong style={{fontSize: "13px"}}>R$ {recSemana.toFixed(2)}</strong></div>
+              <div style={{backgroundColor: modernTheme.primaryLight, borderRadius: "8px", padding: "5px"}}>
+                <small style={{color: primaryColor, fontSize: "11px", fontWeight: "bold"}}>Mês</small><br/>
+                <strong style={{color: primaryColor, fontSize: "13px"}}>R$ {recMes.toFixed(2)}</strong>
+              </div>
+            </div>
           </div>
-        )}
 
+          {/* 📉 CARD DE GASTOS */}
+          <div style={{...cardStyle, boxShadow: modernTheme.shadow, borderLeft: `5px solid ${modernTheme.danger}`}}>
+            <h3 style={{color: modernTheme.danger, marginBottom: "15px"}}>📉 Gastos</h3>
+            <div style={{display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", textAlign: "center"}}>
+              <div><small style={{color: "#999", fontSize: "11px"}}>Hoje</small><br/><strong style={{fontSize: "13px"}}>R$ {despDia.toFixed(2)}</strong></div>
+              <div><small style={{color: "#999", fontSize: "11px"}}>Semana</small><br/><strong style={{fontSize: "13px"}}>R$ {despSemana.toFixed(2)}</strong></div>
+              <div style={{backgroundColor: "#fee2e2", borderRadius: "8px", padding: "5px"}}>
+                <small style={{color: "#b91c1c", fontSize: "11px", fontWeight: "bold"}}>Mês</small><br/>
+                <strong style={{color: "#b91c1c", fontSize: "13px"}}>R$ {despMes.toFixed(2)}</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* 🎯 CARD DE METAS E PERFORMANCE */}
+          <div style={{...cardStyle, boxShadow: modernTheme.shadow}}>
+            <h3 style={{color: primaryColor, marginBottom: "15px"}}>🎯 Performance do Mês</h3>
+            
+            <div style={{display: "flex", justifyContent: "space-between", marginBottom: "8px", fontSize: "13px"}}>
+              <span>Clientes: <strong>{totalClientes}</strong></span>
+              <span>Meta: <strong>60</strong></span>
+            </div>
+
+            {/* Barra de Progresso */}
+            <div style={{width:"100%", height:"12px", backgroundColor: "#eee", borderRadius: "10px", overflow: "hidden", marginBottom: "20px"}}>
+              <div style={{
+                width: `${Math.min((totalClientes / 60) * 100, 100)}%`, 
+                height: "100%", 
+                backgroundColor: totalClientes >= 60 ? "#d4af37" : modernTheme.success,
+                transition: "width 0.5s ease-in-out"
+              }}></div>
+            </div>
+
+            {/* Grid de Retornos */}
+            <div style={{display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px"}}>
+              <div style={{padding: "12px", backgroundColor: "#e8f5e9", borderRadius: "10px", textAlign: "center", border: "1px solid #c8e6c9"}}>
+                <small style={{color: "#2e7d32", fontSize: "11px", fontWeight: "bold"}}>COM RETORNO</small><br/>
+                <strong style={{fontSize: "18px", color: "#2e7d32"}}>{retornosMarked}</strong>
+              </div>
+              <div style={{padding: "12px", backgroundColor: "#fff3e0", borderRadius: "10px", textAlign: "center", border: "1px solid #ffe0b2"}}>
+                <small style={{color: "#ef6c00", fontSize: "11px", fontWeight: "bold"}}>A AGENDAR</small><br/>
+                <strong style={{fontSize: "18px", color: "#ef6c00"}}>{totalClientes - retornosMarked}</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* RESUMO HOJE/MÊS */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+            <div style={{ ...cardStyle, border: `1px solid ${modernTheme.success}`, textAlign: "center" }}>
+              <small>Hoje</small><br/><strong>R$ {recDia.toFixed(2)}</strong>
+            </div>
+            <div style={{ ...cardStyle, border: `1px solid ${primaryColor}`, textAlign: "center" }}>
+              <small>Mês</small><br/><strong>R$ {recMes.toFixed(2)}</strong>
+            </div>
+          </div>
+
+          {/* FORMULÁRIO DE LANÇAMENTO */}
+          <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
+            <h3 style={{color: primaryColor, marginBottom: "15px"}}>{editId ? "✏️ Editar" : "➕ Novo"} Lançamento</h3>
+            <select value={tipoFin} onChange={e => setTipoFin(e.target.value)} style={inputStyle}>
+              <option value="receita">📈 Receita (Entrada)</option>
+              <option value="despesa">📉 Despesa (Saída)</option>
+            </select>
+            <input type="date" value={dataManualFin} onChange={e => setDataManualFin(e.target.value)} style={inputStyle} />
+            <input placeholder="Descrição" value={descFin} onChange={e => setDescFin(e.target.value)} style={inputStyle} />
+            <input placeholder="Valor R$" type="number" step="0.01" value={valorFin} onChange={e => setValorFin(e.target.value)} style={inputStyle} />
+            <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} style={inputStyle}>
+              <option value="pix">📲 Pix</option>
+              <option value="dinheiro">💵 Dinheiro</option>
+              <option value="cartao">💳 Cartão</option>
+            </select>
+            <button onClick={handleSaveTransaction} style={{...btnStyle, background: tipoFin==="receita" ? modernTheme.success : modernTheme.danger}}>
+              {editId ? "💾 Salvar Alteração" : "✅ Gravar no Caixa"}
+            </button>
+            {editId && (
+              <button onClick={() => {setEditId(null); setDescFin(""); setValorFin("");}} style={{...btnStyle, backgroundColor: modernTheme.textMuted, marginTop: "8px"}}>
+                ❌ Cancelar
+              </button>
+            )}
+          </section>
+
+          {/* EXTRATO DETALHADO */}
+          <h3 style={{marginTop: "20px", fontSize: "16px"}}>📋 Extrato Recente</h3>
+          {tMes.length === 0 ? (
+            <p style={{textAlign: "center", color: "#999", fontSize: "13px"}}>Nenhuma transação este mês.</p>
+          ) : (
+            tMes.filter(t => t && t.data && t.valor !== undefined)
+                .sort((a,b) => (b.data || "").localeCompare(a.data || ""))
+                .slice(0, 10).map(t => (
+              <div key={t.id} style={{...itemStyle, marginBottom: "8px", backgroundColor: "#fff", borderRadius: "8px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)"}}>
+                <span style={{flex:1}}>
+                  <small style={{color: "#999"}}>{t.data ? new Date(t.data).toLocaleDateString("pt-BR") : "---"}</small><br/>
+                  <strong>{t.descricao || "Sem descrição"}</strong>
+                  <br/>
+                  <small style={{color: "#666", fontSize: "10px"}}>
+                    {t.formaPagamento === "pix" && "📲 Pix"}
+                    {t.formaPagamento === "dinheiro" && "💵 Dinheiro"}
+                    {t.formaPagamento === "cartao" && "💳 Cartão"}
+                  </small>
+                </span>
+                <strong style={{color: t.tipo === "receita" ? modernTheme.success : modernTheme.danger, marginRight: "10px"}}>
+                  {t.tipo === "receita" ? "+" : "-"} R$ {(Number(t.valor) || 0).toFixed(2)}
+                </strong>
+              </div>
+            ))
+          )}
+        </div>
+      );
+    })()}
+  </div>
+)}
     {/* === ABA CLIENTES === */}
     {tab === "clientes" && (
       <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
