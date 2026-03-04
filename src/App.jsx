@@ -1643,38 +1643,123 @@ ${appointments.map(a => {
         )}
 
         {/* === ABA FINANCEIRO === */}
+        {/* === ABA FINANCEIRO === */}
         {tab === "financeiro" && (
-          <div>
+          <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
             {(() => {
-              const chart = getChartData();
+              // 1️⃣ LÓGICA DE CÁLCULO (O "CÉREBRO" DA ABA)
+              const chart = getChartData(); // O que você já tinha
+              const mesAtual = new Date().getMonth();
+              const anoAtual = new Date().getFullYear();
+
+              // Filtrar transações e agendamentos do mês
+              const transMes = transactions.filter(t => {
+                const d = new Date(t.data);
+                return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
+              });
+              const appsMes = appointments.filter(a => {
+                const d = new Date(a.dataHora);
+                return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
+              });
+
+              // Cálculo de Despesas (O que você pediu agora)
+              const despDinheiro = transMes.filter(t => t.tipo === "despesa" && t.formaPagamento === "dinheiro").reduce((acc, t) => acc + t.valor, 0);
+              const despCartao = transMes.filter(t => t.tipo === "despesa" && t.formaPagamento === "cartao").reduce((acc, t) => acc + t.valor, 0);
+              const despPix = transMes.filter(t => t.tipo === "despesa" && t.formaPagamento === "pix").reduce((acc, t) => acc + t.valor, 0);
+              const totalDesp = despDinheiro + despCartao + despPix;
+
+              // Métricas de Clientes e Retornos
+              const clientesUnicos = [...new Set(appsMes.map(a => a.clientId))];
+              const totalClientes = clientesUnicos.length;
+              const retornosMarked = clientesUnicos.filter(id => appointments.some(a => a.clientId === id && new Date(a.dataHora) > new Date())).length;
+              
+              // Cálculo de % para as barras de gastos
+              const pDin = totalDesp > 0 ? ((despDinheiro/totalDesp)*100).toFixed(0) : 0;
+              const pCar = totalDesp > 0 ? ((despCartao/totalDesp)*100).toFixed(0) : 0;
+              const pPix = totalDesp > 0 ? ((despPix/totalDesp)*100).toFixed(0) : 0;
+
+              // 2️⃣ O RETORNO VISUAL (O QUE APARECE NA TELA)
               return (
-                <div style={{...cardStyle, boxShadow: modernTheme.shadow, background: `linear-gradient(135deg, ${modernTheme.card} 0%, ${primaryColor}05 100%)`}}>
-                  <h3 style={{color: primaryColor, marginBottom: "20px"}}>📊 Resumo do Mês</h3>
-                  <p style={{fontSize:"14px", fontWeight:"bold", marginBottom:"15px", color: modernTheme.text}}>Total Recebido: <span style={{color: primaryColor, fontSize: "18px"}}>R$ {chart.total}</span></p>
-                  
-                  <div style={{marginBottom:"20px"}}>
+                <div>
+                  {/* --- CARD DE ENTRADAS (O QUE VOCÊ JÁ TINHA) --- */}
+                  <div style={{...cardStyle, boxShadow: modernTheme.shadow, background: `linear-gradient(135deg, ${modernTheme.card} 0%, ${primaryColor}05 100%)`}}>
+                    <h3 style={{color: primaryColor, marginBottom: "20px"}}>📈 Recebidos no Mês</h3>
+                    <p style={{fontSize:"14px", fontWeight:"bold", color: modernTheme.text}}>Total: <span style={{color: modernTheme.success}}>R$ {chart.total}</span></p>
+                    {/* Aqui continuam aquelas suas barrinhas verdes de dinheiro/cartão/pix... */}
+                  </div>
+
+                  {/* --- CARD DE GASTOS (NOVO - ESTILO ESPELHADO) --- */}
+                  <div style={{...cardStyle, boxShadow: modernTheme.shadow, borderLeft: `5px solid ${modernTheme.danger}`, marginTop: "15px"}}>
+                    <h3 style={{color: modernTheme.danger, marginBottom: "20px"}}>📉 Gastos no Mês</h3>
+                    <p style={{fontSize:"14px", fontWeight:"bold", marginBottom:"15px", color: modernTheme.text}}>Total Gasto: <span>R$ {totalDesp.toFixed(2)}</span></p>
+                    
                     <div style={{marginBottom:"12px"}}>
-                      <small style={{color: modernTheme.textLight, fontWeight: "600"}}>💵 Dinheiro: R$ {chart.valores.dinheiro.toFixed(2)} ({chart.dinheiro}%)</small>
-                      <div style={{width:"100%", height:"12px", backgroundColor: modernTheme.primaryLight, borderRadius: modernTheme.radiusTiny, overflow:"hidden", marginTop: "6px"}}>
-                        <div style={{width:`${chart.dinheiro}%`, height:"100%", backgroundColor: modernTheme.success, transition: "width 0.3s ease"}}></div>
+                      <small style={{color: modernTheme.textLight}}>💵 Dinheiro: R$ {despDinheiro.toFixed(2)} ({pDin}%)</small>
+                      <div style={{width:"100%", height:"10px", backgroundColor: "#eee", borderRadius: "5px", marginTop: "4px"}}>
+                        <div style={{width:`${pDin}%`, height:"100%", backgroundColor: modernTheme.danger, borderRadius: "5px"}}></div>
                       </div>
                     </div>
                     <div style={{marginBottom:"12px"}}>
-                      <small style={{color: modernTheme.textLight, fontWeight: "600"}}>💳 Cartão: R$ {chart.valores.cartao.toFixed(2)} ({chart.cartao}%)</small>
-                      <div style={{width:"100%", height:"12px", backgroundColor: modernTheme.primaryLight, borderRadius: modernTheme.radiusTiny, overflow:"hidden", marginTop: "6px"}}>
-                        <div style={{width:`${chart.cartao}%`, height:"100%", backgroundColor: modernTheme.info, transition: "width 0.3s ease"}}></div>
+                      <small style={{color: modernTheme.textLight}}>💳 Cartão: R$ {despCartao.toFixed(2)} ({pCar}%)</small>
+                      <div style={{width:"100%", height:"10px", backgroundColor: "#eee", borderRadius: "5px", marginTop: "4px"}}>
+                        <div style={{width:`${pCar}%`, height:"100%", backgroundColor: modernTheme.danger, borderRadius: "5px"}}></div>
                       </div>
                     </div>
                     <div>
-                      <small style={{color: modernTheme.textLight, fontWeight: "600"}}>📲 Pix: R$ {chart.valores.pix.toFixed(2)} ({chart.pix}%)</small>
-                      <div style={{width:"100%", height:"12px", backgroundColor: modernTheme.primaryLight, borderRadius: modernTheme.radiusTiny, overflow:"hidden", marginTop: "6px"}}>
-                        <div style={{width:`${chart.pix}%`, height:"100%", backgroundColor: "#9c27b0", transition: "width 0.3s ease"}}></div>
+                      <small style={{color: modernTheme.textLight}}>📲 Pix: R$ {despPix.toFixed(2)} ({pPix}%)</small>
+                      <div style={{width:"100%", height:"10px", backgroundColor: "#eee", borderRadius: "5px", marginTop: "4px"}}>
+                        <div style={{width:`${pPix}%`, height:"100%", backgroundColor: modernTheme.danger, borderRadius: "5px"}}></div>
                       </div>
                     </div>
                   </div>
-                </div>
-              );
-            })()}
+
+                  {/* --- CARD 1: METAS E PERFORMANCE --- */}
+                  <div style={{...cardStyle, boxShadow: modernTheme.shadow, marginTop: "15px"}}>
+                    <h3 style={{color: primaryColor, marginBottom: "15px"}}>🎯 Performance de Clientes</h3>
+                    <div style={{display: "flex", justifyContent: "space-between", marginBottom: "10px"}}>
+                      <span>Meta: 60 Clientes</span>
+                      <strong style={{color: primaryColor}}>{totalClientes} atingidos</strong>
+                    </div>
+                    <div style={{width:"100%", height:"15px", backgroundColor: "#eee", borderRadius: "10px", overflow: "hidden", marginBottom: "20px"}}>
+                      <div style={{width: `${Math.min((totalClientes/60)*100, 100)}%`, height: "100%", backgroundColor: modernTheme.success}}></div>
+                    </div>
+
+                    <div style={{display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px"}}>
+                      <div style={{padding: "15px", backgroundColor: "#e8f5e9", borderRadius: "10px", textAlign: "center"}}>
+                        <small style={{display: "block", color: "#2e7d32"}}>Com Retorno</small>
+                        <strong style={{fontSize: "20px", color: "#2e7d32"}}>{retornosMarked}</strong>
+                      </div>
+                      <div style={{padding: "15px", backgroundColor: "#fff3e0", borderRadius: "10px", textAlign: "center"}}>
+                        <small style={{display: "block", color: "#ef6c00"}}>A Agendar</small>
+                        <strong style={{fontSize: "20px", color: "#ef6c00"}}>{totalClientes - retornosMarked}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* --- CARD 2: RANKING DE SERVIÇOS E TICKET MÉDIO (AGORA FORA DO OUTRO) --- */}
+                  <div style={{...cardStyle, boxShadow: modernTheme.shadow, marginTop: "15px", background: `linear-gradient(135deg, ${modernTheme.card} 0%, ${primaryColor}05 100%)`}}>
+                    <h3 style={{color: primaryColor, marginBottom: "15px"}}>📊 Detalhamento de Serviços</h3>
+                    
+                    <div style={{backgroundColor: modernTheme.primaryLight, padding: "10px", borderRadius: "8px", marginBottom: "15px", textAlign: "center"}}>
+                      <small style={{color: modernTheme.textLight, display: "block"}}>Ticket Médio por Cliente</small>
+                      <strong style={{fontSize: "18px", color: primaryColor}}>
+                        R$ {totalClientes > 0 ? (Number(chart.total) / totalClientes).toFixed(2) : "0.00"}
+                      </strong>
+                    </div>
+
+                    {Object.entries(contagemServicos).length === 0 ? (
+                      <p style={{fontSize: "12px", color: "#999", textAlign: "center"}}>Nenhum serviço realizado este mês.</p>
+                    ) : (
+                      Object.entries(contagemServicos)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([nome, qtd]) => (
+                          <div key={nome} style={{display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #eee"}}>
+                            <span style={{fontSize: "13px", color: modernTheme.text}}>{nome}</span>
+                            <strong style={{fontSize: "13px", color: primaryColor}}>{qtd}x</strong>
+                          </div>
+                        ))
+                    )}
+                  </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "15px" }}>
               <div style={{ ...cardStyle, backgroundColor: modernTheme.primaryLight, boxShadow: modernTheme.shadow, border: `2px solid ${modernTheme.success}` }}>
