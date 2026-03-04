@@ -1678,7 +1678,6 @@ ${appointments.map(a => {
         )}
 
         {/* === ABA FINANCEIRO === */}
-        // ========== ABA FINANCEIRO ==========
 {tab === "financeiro" && (
   <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
     {(() => {
