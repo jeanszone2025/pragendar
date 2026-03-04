@@ -1085,7 +1085,39 @@ async function loadProfile(uid) {
     
     window.open(link, "_blank");
   };
+const handleSaveAppointment = async () => {
+    if (!selCliente || !selServico) {
+      alert("⚠️ Por favor, selecione a cliente e o serviço!");
+      return;
+    }
 
+    const dataHora = new Date(selectedDate);
+    dataHora.setHours(selHora, 0, 0, 0);
+
+    const d = {
+      clientId: selCliente,
+      serviceId: selServico,
+      dataHora: dataHora.toISOString(),
+      status: "pendente",
+      tenantId: user.uid,
+      // Se for um agendamento novo, salvamos quem é a cliente pelo nome também para facilitar
+      clientName: getNome(clients, selCliente)
+    };
+
+    try {
+      if (editAppId) {
+        await updateDoc(doc(db, "appointments", editAppId), d);
+      } else {
+        await addDoc(collection(db, "appointments"), d);
+      }
+      setShowModal(false);
+      loadData(user.uid);
+      alert("✅ Agendamento salvo com sucesso!");
+    } catch (error) {
+      console.error("Erro ao salvar agendamento:", error);
+      alert("❌ Erro ao salvar. Tente novamente.");
+    }
+  };
   const handleSaveTransaction = async () => {
     const d = { 
       descricao: descFin, 
@@ -2632,32 +2664,57 @@ ${appointments.map(a => {
         </div>
       )}
 
-      {/* ========== MODAIS DE AGENDAMENTO E PAGAMENTO ========== */}
+      {/* ========== MODAL DE AGENDAMENTO (VERSÃO COMPLETA) ========== */}
       {showModal && (
         <div style={modalOverlay}>
-          <div style={{...modalContent, borderTop: `4px solid ${primaryColor}`}}>
-            <h3 style={{color: primaryColor}}>📅 {editAppId ? "Editar" : "Novo"} Agendamento</h3>
+          <div style={{...modalContent, borderTop: `4px solid ${primaryColor}`, maxWidth: "400px"}}>
+            <h3 style={{color: primaryColor, marginBottom: "15px"}}>
+              {editAppId ? "✏️ Editar Horário" : "📅 Novo Agendamento"}
+            </h3>
+            
+            <p style={{fontSize: "12px", color: "#666", marginBottom: "10px"}}>
+              Horário selecionado: <strong>{String(selHora).padStart(2, "0")}:00h</strong>
+            </p>
+
+            <label style={labelStyle}>👤 Buscar Cliente</label>
             <input 
-              placeholder="🔍 Nome da cliente..." 
+              placeholder="Digite o nome..." 
               value={clientSearch} 
               onChange={e => {setClientSearch(e.target.value); setSelCliente("");}} 
               style={inputStyle} 
             />
+            
             {clientSearch && !selCliente && (
               <div style={dropdownStyle}>
                 {clients.filter(c => c.nome.toLowerCase().includes(clientSearch.toLowerCase())).slice(0, 5).map(c => (
                   <div key={c.id} onClick={() => {setSelCliente(c.id); setClientSearch(c.nome)}} style={dropdownItem}>
-                    {c.nome}
+                    {c.nome} - <small>{c.telefone}</small>
                   </div>
                 ))}
               </div>
             )}
+
+            <label style={labelStyle}>💇 Serviço</label>
             <select value={selServico} onChange={e => setSelServico(e.target.value)} style={inputStyle}>
               <option value="">Selecione o Serviço</option>
-              {services.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+              {services.map(s => <option key={s.id} value={s.id}>{s.nome} (R$ {s.preco})</option>)}
             </select>
-            {/* ... final do código do modal de agendamento que já existe ... */}
-            <button onClick={() => setShowModal(false)} style={{...btnStyle, backgroundColor: "#ccc", marginTop: "10px"}}>Cancelar</button>
+
+            <div style={{ marginTop: "20px", display: "flex", flexDirection: "column", gap: "10px" }}>
+              <button 
+                onClick={handleSaveAppointment} 
+                style={{...btnStyle, backgroundColor: modernTheme.success}}
+              >
+                {editAppId ? "💾 Salvar Alterações" : "✅ Confirmar Agendamento"}
+              </button>
+
+              <button 
+                onClick={() => setShowModal(false)} 
+                style={{...btnStyle, backgroundColor: "#ccc"}}
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
       )}
