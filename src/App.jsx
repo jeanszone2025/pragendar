@@ -1877,20 +1877,22 @@ ${appointments.map(a => {
               {alfabeto.map(l => <button key={l} onClick={() => setSelectedLetter(l)} style={btnLetter(selectedLetter === l)}>{l}</button>)}
               <button onClick={() => setSelectedLetter("")} style={btnLetter(selectedLetter === "")}>Tudo</button>
             </div>
-            <p style={{fontSize: "12px", color: modernTheme.textMuted, fontWeight: "600"}}>👥 Total: {clients.filter(c => c.nome?.toLowerCase().includes(searchTerm.toLowerCase()) && (selectedLetter==="" || c.nome?.toUpperCase().startsWith(selectedLetter))).length} clientes</p>
+            <p style={{fontSize: "12px", color: modernTheme.textMuted, fontWeight: "600"}}>
+              👥 Total: {clients.filter(c => (c.nome || "").toLowerCase().includes(searchTerm.toLowerCase()) && (selectedLetter==="" || (c.nome || "").toUpperCase().startsWith(selectedLetter))).length} clientes
+            </p>
 
-            {clients.filter(c => c.nome?.toLowerCase().includes(searchTerm.toLowerCase()) && (selectedLetter==="" || c.nome?.toUpperCase().startsWith(selectedLetter))).map(c => {
+            {clients.filter(c => (c.nome || "").toLowerCase().includes(searchTerm.toLowerCase()) && (selectedLetter==="" || (c.nome || "").toUpperCase().startsWith(selectedLetter))).map(c => {
               const fidelity = getClientFidelity(c.id);
               return (
                 <div key={c.id} style={{...itemStyle, borderLeft: fidelity.achieved ? `4px solid ${modernTheme.warning}` : "1px solid #eee", borderRadius: modernTheme.radiusTiny, marginBottom: "8px", boxShadow: modernTheme.shadow}}>
                   <span style={{flex:1, cursor:"pointer"}} onClick={() => {setSelectedClientForHistory(c); setShowClientHistoryModal(true);}}>
-                    <strong style={{color: modernTheme.text}}>{c.nome}</strong>
-                    <br/><small style={{color: modernTheme.textMuted}}>{c.telefone}</small>
+                    <strong style={{color: modernTheme.text}}>{c.nome || "Sem Nome"}</strong>
+                    <br/><small style={{color: modernTheme.textMuted}}>{c.telefone || "Sem telefone"}</small>
                     {fidelity.achieved && <br/>}
                     {fidelity.achieved && <small style={{color: modernTheme.warning, fontWeight:"bold"}}>🎁 Prêmio atingido!</small>}
                   </span>
-                  <button onClick={() => {setEditId(c.id); setNomeCliente(c.nome); setTelefone(c.telefone)}} style={btnEdit}>✏️</button>
-                  <button onClick={() => deleteWithConfirm("clients", c.id, c.nome, c.telefone)} style={btnDel}>🗑️</button>
+                  <button onClick={() => {setEditId(c.id); setNomeCliente(c.nome || ""); setTelefone(c.telefone || "")}} style={btnEdit}>✏️</button>
+                  <button onClick={() => deleteWithConfirm("clients", c.id, c.nome || "Cliente", c.telefone)} style={btnDel}>🗑️</button>
                 </div>
               );
             })}
