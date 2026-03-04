@@ -1717,6 +1717,7 @@ ${appointments.map(a => {
         return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
       });
       const totalClientes = [...new Set(appsMes.map(a => a.clientId))].length;
+      const retornosMarked = appointments.filter(a => a.status === "pago").length; // Exemplo de lógica
 
       return (   
                  <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
@@ -1779,20 +1780,7 @@ ${appointments.map(a => {
                     </div>
                   </div>
 
-                  {/* CARD DE RANKING */}
-                  <div style={{...cardStyle, boxShadow: modernTheme.shadow}}>
-                    <h3 style={{color: primaryColor, marginBottom: "15px"}}>📊 Detalhamento de Serviços</h3>
-                    <div style={{backgroundColor: modernTheme.primaryLight, padding: "10px", borderRadius: "8px", marginBottom: "12px", textAlign: "center"}}>
-                      <small>Ticket Médio: <strong>R$ {totalClientes > 0 ? (Number(chart.total) / totalClientes).toFixed(2) : "0.00"}</strong></small>
-                    </div>
-                    {Object.entries(contagemServicos).sort((a,b)=>b[1]-a[1]).map(([nome, qtd]) => (
-                      <div key={nome} style={{display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f5f5f5", fontSize: "13px"}}>
-                        <span>{nome}</span><strong>{qtd}x</strong>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* RESUMO HOJE/MÊS RÁPIDO */}
+                {/* RESUMO HOJE/MÊS RÁPIDO */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                     <div style={{ ...cardStyle, border: `1px solid ${modernTheme.success}`, textAlign: "center" }}>
                       <small>Hoje</small><br/><strong>R$ {calcTotal(transactions, "hoje").toFixed(2)}</strong>
