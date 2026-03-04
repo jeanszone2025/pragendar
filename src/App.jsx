@@ -1238,29 +1238,6 @@ ${appointments.map(a => {
     win.document.write(html);
     win.document.close();
   };
-<h3 style="margin: 0; font-size: 28px;">R$ ${chart.total}</h3>
-<small>Total Recebido</small></div>
-<h2 style="color: ${primaryColor}; border-bottom: 2px solid ${primaryColor}; padding-bottom: 10px;">Agendamentos Realizados</h2>
-<table><thead><tr><th>Data/Hora</th><th>Cliente</th><th>Serviço</th><th>Valor</th><th>Status</th></tr></thead><tbody>
-${appointments.map(a => {
-  const serv = services.find(s => s.id === a.serviceId);
-  const valor = serv?.preco || 0;
-  return `<tr><td>${new Date(a.dataHora).toLocaleDateString("pt-BR")} ${String(new Date(a.dataHora).getHours()).padStart(2, "0")}:${String(new Date(a.dataHora).getMinutes()).padStart(2, "0")}</td><td>${getNome(clients, a.clientId)}</td><td>${getNome(services, a.serviceId)}</td><td>R$ ${valor}</td><td>${a.status === "pago" ? "✅ Pago" : "⏳ Pendente"}</td></tr>`;
-}).join("")}
-<tr class="total-row"><td colspan="3" style="text-align: right;">TOTAL FATURADO:</td><td colspan="2">R$ ${appointments.filter(a => a.status === "pago").reduce((acc, a) => {
-  const serv = services.find(s => s.id === a.serviceId);
-  return acc + (serv?.preco || 0);
-}, 0).toFixed(2)}</td></tr></tbody></table>
-<h2 style="color: ${primaryColor}; border-bottom: 2px solid ${primaryColor}; padding-bottom: 10px; margin-top: 30px;">Resumo de Clientes</h2>
-<p style="font-size: 12px; color: #666;">Total de clientes: <strong>${clients.length}</strong> | Total de atendimentos: <strong>${appointments.length}</strong></p>
-<div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; color: #999; font-size: 11px;">
-<p>Relatório gerado automaticamente pelo Pragendar R$ em ${new Date().toLocaleString("pt-BR")}</p></div></div>
-<script>window.print(); window.close();</script></body></html>`;
-
-    win.document.write(html);
-    win.document.close();
-  };
-
   const askAI = async (pergunta) => {
   const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
