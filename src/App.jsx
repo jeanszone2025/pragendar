@@ -686,6 +686,7 @@ export default function App() {
   const [aiQuery, setAiQuery] = useState("");
   const [aiResponse, setAiResponse] = useState("Olá! Sou sua Gerente Virtual.");
   const [aiChatHistory, setAiChatHistory] = useState([]);
+  const [metaClientes, setMetaClientes] = useState(60);
 
   // ========== THEME ENGINE ==========
   // ========== THEME ENGINE DINÂMICO ==========
@@ -1194,6 +1195,49 @@ tr:nth-child(even) { background: #f5f5f5; }
 <div class="card"><strong>📲 Pix</strong>R$ ${chart.valores.pix.toFixed(2)}<br/><small>${chart.pix}%</small></div>
 </div>
 <div style="background: ${primaryColor}; color: white; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
+<h3 style="margin: 0; font-size: 28px;">R$ ${chart.total}</h3>
+<small>Total Recebido</small>
+</div>
+<h2 style="color: ${primaryColor}; border-bottom: 2px solid ${primaryColor}; padding-bottom: 10px;">Agendamentos Realizados</h2>
+<table>
+<thead>
+<tr>
+<th>Data/Hora</th>
+<th>Cliente</th>
+<th>Serviço</th>
+<th>Valor</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+${appointments.map(a => {
+  const serv = services.find(s => s.id === a.serviceId);
+  const valor = serv?.preco || 0;
+  const cli = clients.find(c => c.id === a.clientId);
+  return `<tr><td>${new Date(a.dataHora).toLocaleDateString("pt-BR")} ${String(new Date(a.dataHora).getHours()).padStart(2, "0")}:${String(new Date(a.dataHora).getMinutes()).padStart(2, "0")}</td><td>${cli?.nome || "---"}</td><td>${serv?.nome || "---"}</td><td>R$ ${valor.toFixed(2)}</td><td>${a.status === "pago" ? "✅ Pago" : "⏳ Pendente"}</td></tr>`;
+}).join("")}
+<tr style="font-weight: bold; background: #ffe0ec;">
+<td colspan="3" style="text-align: right;">TOTAL FATURADO:</td>
+<td colspan="2">R$ ${appointments.filter(a => a.status === "pago").reduce((acc, a) => {
+  const serv = services.find(s => s.id === a.serviceId);
+  return acc + (serv?.preco || 0);
+}, 0).toFixed(2)}</td>
+</tr>
+</tbody>
+</table>
+<h2 style="color: ${primaryColor}; border-bottom: 2px solid ${primaryColor}; padding-bottom: 10px; margin-top: 30px;">Resumo de Clientes</h2>
+<p style="font-size: 12px; color: #666;">Total de clientes: <strong>${clients.length}</strong> | Total de atendimentos: <strong>${appointments.length}</strong></p>
+<div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; color: #999; font-size: 11px;">
+<p>Relatório gerado automaticamente pelo Pragendar R$ em ${new Date().toLocaleString("pt-BR")}</p>
+</div>
+</div>
+<script>window.print(); window.close();</script>
+</body>
+</html>`;
+
+    win.document.write(html);
+    win.document.close();
+  };
 <h3 style="margin: 0; font-size: 28px;">R$ ${chart.total}</h3>
 <small>Total Recebido</small></div>
 <h2 style="color: ${primaryColor}; border-bottom: 2px solid ${primaryColor}; padding-bottom: 10px;">Agendamentos Realizados</h2>
@@ -2817,3 +2861,4 @@ const btnDel = { backgroundColor: "#ffebee", color: "#f44336", border: "none", p
 const btnWhatsApp = { backgroundColor: "#e8f5e9", color: "#2e7d32", border: "none", padding: "5px", borderRadius: "4px", cursor: "pointer", marginRight: "5px" };
 const btnPay = { backgroundColor: "#fff3e0", color: "#ef6c00", border: "none", padding: "5px", borderRadius: "4px", cursor: "pointer", marginRight: "5px" };
 const btnLetter = (active) => ({ padding: "5px", minWidth: "25px", backgroundColor: active ? "#d81b60" : "#eee", color: active ? "#fff" : "#000", border: "none", borderRadius: "4px", cursor: "pointer" });
+  
