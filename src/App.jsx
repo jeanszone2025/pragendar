@@ -1718,28 +1718,7 @@ ${appointments.map(a => {
       });
       const totalClientes = [...new Set(appsMes.map(a => a.clientId))].length;
 
-      return (
-                      <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
-                  
-                  {/* CARD DE ENTRADAS */}
-                  <div style={{...cardStyle, boxShadow: modernTheme.shadow, background: `linear-gradient(135deg, ${modernTheme.card} 0%, ${primaryColor}05 100%)`}}>
-                    <h3 style={{color: primaryColor, marginBottom: "15px"}}>📈 Recebidos no Mês</h3>
-                    <p style={{fontSize:"16px", fontWeight:"bold", color: modernTheme.text}}>Total: <span style={{color: modernTheme.success}}>R$ {chart.total}</span></p>
-                    <div style={{display: "flex", gap: "10px", fontSize: "11px", color: modernTheme.textLight}}>
-                      <span>💵 {chart.dinheiro}%</span> | <span>💳 {chart.cartao}%</span> | <span>📲 {chart.pix}%</span>
-                    </div>
-                  </div>
-
-                  {/* CARD DE GASTOS */}
-                  <div style={{...cardStyle, boxShadow: modernTheme.shadow, borderLeft: `5px solid ${modernTheme.danger}`}}>
-                    <h3 style={{color: modernTheme.danger, marginBottom: "15px"}}>📉 Gastos no Mês</h3>
-                    <p style={{fontSize:"16px", fontWeight:"bold", marginBottom:"10px"}}>Total Gasto: R$ {totalDesp.toFixed(2)}</p>
-                    <div style={{width:"100%", height:"8px", backgroundColor: "#eee", borderRadius: "5px", overflow: "hidden"}}>
-                      <div style={{width: `${pDin}%`, height: "100%", backgroundColor: modernTheme.danger, display: "inline-block"}}></div>
-                    </div>
-                    <small style={{fontSize: "10px", color: modernTheme.textMuted}}>Dinheiro: {pDin}% | Cartão: {pCar}% | Pix: {pPix}%</small>
-                  </div>
-
+      return (   
                  <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
                   
                   {/* 📈 CARD DE ENTRADAS (REVISADO) */}
@@ -1799,18 +1778,6 @@ ${appointments.map(a => {
                       </div>
                     </div>
                   </div>
-
-                  {/* RANKING DE SERVIÇOS (Mantendo o que você já tinha) */}
-                  <div style={{...cardStyle, boxShadow: modernTheme.shadow}}>
-                    <h3 style={{color: primaryColor, marginBottom: "15px"}}>📊 Ranking de Serviços</h3>
-                    {Object.entries(contagemServicos).sort((a,b)=>b[1]-a[1]).map(([nome, qtd]) => (
-                      <div key={nome} style={{display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #eee", fontSize: "13px"}}>
-                        <span>{nome}</span><strong>{qtd}x</strong>
-                      </div>
-                    ))}
-                  </div>
-
-                </div>
 
                   {/* CARD DE RANKING */}
                   <div style={{...cardStyle, boxShadow: modernTheme.shadow}}>
