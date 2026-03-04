@@ -1815,7 +1815,7 @@ ${appointments.map(a => {
                   {tMes.length === 0 ? (
                     <p style={{textAlign: "center", color: "#999", fontSize: "13px"}}>Nenhuma transação este mês.</p>
                   ) : (
-                    transMes.sort((a,b) => b.data.localeCompare(a.data)).slice(0, 10).map(t => (
+                    tMes.sort((a,b) => b.data.localeCompare(a.data)).slice(0, 10).map(t => (
                       <div key={t.id} style={{...itemStyle, marginBottom: "8px", backgroundColor: "#fff", borderRadius: "8px"}}>
                         <span style={{flex:1}}>
                           <small style={{color: "#999"}}>{new Date(t.data).toLocaleDateString()}</small><br/>
