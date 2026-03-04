@@ -1821,28 +1821,31 @@ ${appointments.map(a => {
                 </div>
               ))
             )}
-          </div>
-        )}
+          </div> // 👈 Fecha a div que envolve o conteúdo da aba
+        ); // 👈 Fecha o RETURN da função de cálculo (IIFE)
+        })()} {/* 👈 Fecha e executa a FUNÇÃO de cálculo (IIFE) */}
+      </div> // 👈 Fecha a div da animação do Financeiro
+    )} 
 
-        {/* === ABA CLIENTES === */}
-        {tab === "clientes" && (
-            <div>
-              <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
-              <h3 style={{color: primaryColor, marginBottom: "15px"}}>{editId ? "✏️ Editar" : "👤 Novo"} Cliente</h3>
-              <input placeholder="👤 Nome Completo" value={nomeCliente} onChange={e => setNomeCliente(e.target.value)} style={inputStyle} />
-              <input placeholder="📱 Telefone" value={telefone} onChange={e => setTelefone(e.target.value)} style={inputStyle} />
-              <button onClick={async () => {
-                if (!nomeCliente.trim()) return alert("Digite o nome do cliente");
-                const d = { nome: nomeCliente, telefone, tenantId: user.uid };
-                try {
-                  if(editId) await updateDoc(doc(db, "clients", editId), d);
-                  else await addDoc(collection(db, "clients"), d);
-                  setEditId(null); setNomeCliente(""); setTelefone(""); loadData(user.uid);
-                } catch (error) {
-                  alert("❌ Erro: " + error.message);
-                }
-              }} style={{...btnStyle, background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}dd)`}}>✅ Salvar Cliente</button>
-            </section>
+    {/* === ABA CLIENTES === */}
+    {tab === "clientes" && (
+      <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
+        <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
+          <h3 style={{color: primaryColor, marginBottom: "15px"}}>{editId ? "✏️ Editar" : "👤 Novo"} Cliente</h3>
+          <input placeholder="👤 Nome Completo" value={nomeCliente} onChange={e => setNomeCliente(e.target.value)} style={inputStyle} />
+          <input placeholder="📱 Telefone" value={telefone} onChange={e => setTelefone(e.target.value)} style={inputStyle} />
+          <button onClick={async () => {
+            if (!nomeCliente.trim()) return alert("Digite o nome do cliente");
+            const d = { nome: nomeCliente, telefone, tenantId: user.uid };
+            try {
+              if(editId) await updateDoc(doc(db, "clients", editId), d);
+              else await addDoc(collection(db, "clients"), d);
+              setEditId(null); setNomeCliente(""); setTelefone(""); loadData(user.uid);
+            } catch (error) {
+              alert("❌ Erro: " + error.message);
+            }
+          }} style={{...btnStyle, background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}dd)`}}>✅ Salvar Cliente</button>
+        </section>
 
             <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
               <h3 style={{color: primaryColor, marginBottom: "10px"}}>📥 Importar Clientes via CSV</h3>
