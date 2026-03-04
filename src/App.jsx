@@ -1824,7 +1824,7 @@ ${appointments.map(a => {
             </div> 
           )} 
 
-          {/* === ABA CLIENTES === */}
+          // === ABA CLIENTES === 
           {tab === "clientes" && (
             <div>
               <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
