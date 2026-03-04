@@ -1643,189 +1643,153 @@ ${appointments.map(a => {
         )}
 
         {/* === ABA FINANCEIRO === */}
-        {/* === ABA FINANCEIRO === */}
         {tab === "financeiro" && (
           <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
             {(() => {
-              // 1️⃣ LÓGICA DE CÁLCULO (O "CÉREBRO" DA ABA)
-              const chart = getChartData(); // O que você já tinha
+              // 1️⃣ LÓGICA DE CÁLCULO (Blindagem contra erros de dados nulos)
+              const chart = getChartData() || { total: "0.00", dinheiro: 0, cartao: 0, pix: 0, valores: { dinheiro: 0, cartao: 0, pix: 0 } };
               const mesAtual = new Date().getMonth();
               const anoAtual = new Date().getFullYear();
 
-              // Filtrar transações e agendamentos do mês
-              const transMes = transactions.filter(t => {
+              const transMes = (transactions || []).filter(t => {
                 const d = new Date(t.data);
                 return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
               });
-              const appsMes = appointments.filter(a => {
+
+              const appsMes = (appointments || []).filter(a => {
                 const d = new Date(a.dataHora);
                 return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
               });
 
-              // Cálculo de Despesas (O que você pediu agora)
-              const despDinheiro = transMes.filter(t => t.tipo === "despesa" && t.formaPagamento === "dinheiro").reduce((acc, t) => acc + t.valor, 0);
-              const despCartao = transMes.filter(t => t.tipo === "despesa" && t.formaPagamento === "cartao").reduce((acc, t) => acc + t.valor, 0);
-              const despPix = transMes.filter(t => t.tipo === "despesa" && t.formaPagamento === "pix").reduce((acc, t) => acc + t.valor, 0);
+              const despDinheiro = transMes.filter(t => t.tipo === "despesa" && t.formaPagamento === "dinheiro").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
+              const despCartao = transMes.filter(t => t.tipo === "despesa" && t.formaPagamento === "cartao").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
+              const despPix = transMes.filter(t => t.tipo === "despesa" && t.formaPagamento === "pix").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
               const totalDesp = despDinheiro + despCartao + despPix;
 
-              // Métricas de Clientes e Retornos
               const clientesUnicos = [...new Set(appsMes.map(a => a.clientId))];
               const totalClientes = clientesUnicos.length;
-              const retornosMarked = clientesUnicos.filter(id => appointments.some(a => a.clientId === id && new Date(a.dataHora) > new Date())).length;
+              const retornosMarked = clientesUnicos.filter(id => (appointments || []).some(a => a.clientId === id && new Date(a.dataHora) > new Date())).length;
               
-              // Cálculo de % para as barras de gastos
               const pDin = totalDesp > 0 ? ((despDinheiro/totalDesp)*100).toFixed(0) : 0;
               const pCar = totalDesp > 0 ? ((despCartao/totalDesp)*100).toFixed(0) : 0;
               const pPix = totalDesp > 0 ? ((despPix/totalDesp)*100).toFixed(0) : 0;
 
-              // 2️⃣ O RETORNO VISUAL (O QUE APARECE NA TELA)
+              const contagemServicos = appsMes.reduce((acc, a) => {
+                const nomeS = getNome(services, a.serviceId) || "Outros";
+                acc[nomeS] = (acc[nomeS] || 0) + 1;
+                return acc;
+              }, {});
+
+              // 2️⃣ RETORNO VISUAL ÚNICO
               return (
-                <div>
-                  {/* --- CARD DE ENTRADAS (O QUE VOCÊ JÁ TINHA) --- */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+                  
+                  {/* CARD DE ENTRADAS */}
                   <div style={{...cardStyle, boxShadow: modernTheme.shadow, background: `linear-gradient(135deg, ${modernTheme.card} 0%, ${primaryColor}05 100%)`}}>
-                    <h3 style={{color: primaryColor, marginBottom: "20px"}}>📈 Recebidos no Mês</h3>
-                    <p style={{fontSize:"14px", fontWeight:"bold", color: modernTheme.text}}>Total: <span style={{color: modernTheme.success}}>R$ {chart.total}</span></p>
-                    {/* Aqui continuam aquelas suas barrinhas verdes de dinheiro/cartão/pix... */}
-                  </div>
-
-                  {/* --- CARD DE GASTOS (NOVO - ESTILO ESPELHADO) --- */}
-                  <div style={{...cardStyle, boxShadow: modernTheme.shadow, borderLeft: `5px solid ${modernTheme.danger}`, marginTop: "15px"}}>
-                    <h3 style={{color: modernTheme.danger, marginBottom: "20px"}}>📉 Gastos no Mês</h3>
-                    <p style={{fontSize:"14px", fontWeight:"bold", marginBottom:"15px", color: modernTheme.text}}>Total Gasto: <span>R$ {totalDesp.toFixed(2)}</span></p>
-                    
-                    <div style={{marginBottom:"12px"}}>
-                      <small style={{color: modernTheme.textLight}}>💵 Dinheiro: R$ {despDinheiro.toFixed(2)} ({pDin}%)</small>
-                      <div style={{width:"100%", height:"10px", backgroundColor: "#eee", borderRadius: "5px", marginTop: "4px"}}>
-                        <div style={{width:`${pDin}%`, height:"100%", backgroundColor: modernTheme.danger, borderRadius: "5px"}}></div>
-                      </div>
-                    </div>
-                    <div style={{marginBottom:"12px"}}>
-                      <small style={{color: modernTheme.textLight}}>💳 Cartão: R$ {despCartao.toFixed(2)} ({pCar}%)</small>
-                      <div style={{width:"100%", height:"10px", backgroundColor: "#eee", borderRadius: "5px", marginTop: "4px"}}>
-                        <div style={{width:`${pCar}%`, height:"100%", backgroundColor: modernTheme.danger, borderRadius: "5px"}}></div>
-                      </div>
-                    </div>
-                    <div>
-                      <small style={{color: modernTheme.textLight}}>📲 Pix: R$ {despPix.toFixed(2)} ({pPix}%)</small>
-                      <div style={{width:"100%", height:"10px", backgroundColor: "#eee", borderRadius: "5px", marginTop: "4px"}}>
-                        <div style={{width:`${pPix}%`, height:"100%", backgroundColor: modernTheme.danger, borderRadius: "5px"}}></div>
-                      </div>
+                    <h3 style={{color: primaryColor, marginBottom: "15px"}}>📈 Recebidos no Mês</h3>
+                    <p style={{fontSize:"16px", fontWeight:"bold", color: modernTheme.text}}>Total: <span style={{color: modernTheme.success}}>R$ {chart.total}</span></p>
+                    <div style={{display: "flex", gap: "10px", fontSize: "11px", color: modernTheme.textLight}}>
+                      <span>💵 {chart.dinheiro}%</span> | <span>💳 {chart.cartao}%</span> | <span>📲 {chart.pix}%</span>
                     </div>
                   </div>
 
-                  {/* --- CARD 1: METAS E PERFORMANCE --- */}
-                  <div style={{...cardStyle, boxShadow: modernTheme.shadow, marginTop: "15px"}}>
-                    <h3 style={{color: primaryColor, marginBottom: "15px"}}>🎯 Performance de Clientes</h3>
-                    <div style={{display: "flex", justifyContent: "space-between", marginBottom: "10px"}}>
-                      <span>Meta: 60 Clientes</span>
-                      <strong style={{color: primaryColor}}>{totalClientes} atingidos</strong>
+                  {/* CARD DE GASTOS */}
+                  <div style={{...cardStyle, boxShadow: modernTheme.shadow, borderLeft: `5px solid ${modernTheme.danger}`}}>
+                    <h3 style={{color: modernTheme.danger, marginBottom: "15px"}}>📉 Gastos no Mês</h3>
+                    <p style={{fontSize:"16px", fontWeight:"bold", marginBottom:"10px"}}>Total Gasto: R$ {totalDesp.toFixed(2)}</p>
+                    <div style={{width:"100%", height:"8px", backgroundColor: "#eee", borderRadius: "5px", overflow: "hidden"}}>
+                      <div style={{width: `${pDin}%`, height: "100%", backgroundColor: modernTheme.danger, display: "inline-block"}}></div>
                     </div>
-                    <div style={{width:"100%", height:"15px", backgroundColor: "#eee", borderRadius: "10px", overflow: "hidden", marginBottom: "20px"}}>
+                    <small style={{fontSize: "10px", color: modernTheme.textMuted}}>Dinheiro: {pDin}% | Cartão: {pCar}% | Pix: {pPix}%</small>
+                  </div>
+
+                  {/* CARD DE PERFORMANCE */}
+                  <div style={{...cardStyle, boxShadow: modernTheme.shadow}}>
+                    <h3 style={{color: primaryColor, marginBottom: "15px"}}>🎯 Metas de Clientes</h3>
+                    <div style={{display: "flex", justifyContent: "space-between", marginBottom: "8px", fontSize: "13px"}}>
+                      <span>Atingido: <strong>{totalClientes}</strong></span>
+                      <span>Meta: 60</span>
+                    </div>
+                    <div style={{width:"100%", height:"12px", backgroundColor: "#eee", borderRadius: "10px", overflow: "hidden", marginBottom: "15px"}}>
                       <div style={{width: `${Math.min((totalClientes/60)*100, 100)}%`, height: "100%", backgroundColor: modernTheme.success}}></div>
                     </div>
-
                     <div style={{display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px"}}>
-                      <div style={{padding: "15px", backgroundColor: "#e8f5e9", borderRadius: "10px", textAlign: "center"}}>
-                        <small style={{display: "block", color: "#2e7d32"}}>Com Retorno</small>
-                        <strong style={{fontSize: "20px", color: "#2e7d32"}}>{retornosMarked}</strong>
+                      <div style={{padding: "10px", backgroundColor: "#e8f5e9", borderRadius: "8px", textAlign: "center"}}>
+                        <small style={{color: "#2e7d32", fontSize: "11px"}}>Retornos</small><br/>
+                        <strong style={{color: "#2e7d32"}}>{retornosMarked}</strong>
                       </div>
-                      <div style={{padding: "15px", backgroundColor: "#fff3e0", borderRadius: "10px", textAlign: "center"}}>
-                        <small style={{display: "block", color: "#ef6c00"}}>A Agendar</small>
-                        <strong style={{fontSize: "20px", color: "#ef6c00"}}>{totalClientes - retornosMarked}</strong>
+                      <div style={{padding: "10px", backgroundColor: "#fff3e0", borderRadius: "8px", textAlign: "center"}}>
+                        <small style={{color: "#ef6c00", fontSize: "11px"}}>A Agendar</small><br/>
+                        <strong style={{color: "#ef6c00"}}>{totalClientes - retornosMarked}</strong>
                       </div>
                     </div>
                   </div>
 
-                  {/* --- CARD 2: RANKING DE SERVIÇOS E TICKET MÉDIO (AGORA FORA DO OUTRO) --- */}
-                  <div style={{...cardStyle, boxShadow: modernTheme.shadow, marginTop: "15px", background: `linear-gradient(135deg, ${modernTheme.card} 0%, ${primaryColor}05 100%)`}}>
+                  {/* CARD DE RANKING */}
+                  <div style={{...cardStyle, boxShadow: modernTheme.shadow}}>
                     <h3 style={{color: primaryColor, marginBottom: "15px"}}>📊 Detalhamento de Serviços</h3>
-                    
-                    <div style={{backgroundColor: modernTheme.primaryLight, padding: "10px", borderRadius: "8px", marginBottom: "15px", textAlign: "center"}}>
-                      <small style={{color: modernTheme.textLight, display: "block"}}>Ticket Médio por Cliente</small>
-                      <strong style={{fontSize: "18px", color: primaryColor}}>
-                        R$ {totalClientes > 0 ? (Number(chart.total) / totalClientes).toFixed(2) : "0.00"}
-                      </strong>
+                    <div style={{backgroundColor: modernTheme.primaryLight, padding: "10px", borderRadius: "8px", marginBottom: "12px", textAlign: "center"}}>
+                      <small>Ticket Médio: <strong>R$ {totalClientes > 0 ? (Number(chart.total) / totalClientes).toFixed(2) : "0.00"}</strong></small>
                     </div>
-
-                    {Object.entries(contagemServicos).length === 0 ? (
-                      <p style={{fontSize: "12px", color: "#999", textAlign: "center"}}>Nenhum serviço realizado este mês.</p>
-                    ) : (
-                      Object.entries(contagemServicos)
-                        .sort((a, b) => b[1] - a[1])
-                        .map(([nome, qtd]) => (
-                          <div key={nome} style={{display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #eee"}}>
-                            <span style={{fontSize: "13px", color: modernTheme.text}}>{nome}</span>
-                            <strong style={{fontSize: "13px", color: primaryColor}}>{qtd}x</strong>
-                          </div>
-                        ))
-                    )}
+                    {Object.entries(contagemServicos).sort((a,b)=>b[1]-a[1]).map(([nome, qtd]) => (
+                      <div key={nome} style={{display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f5f5f5", fontSize: "13px"}}>
+                        <span>{nome}</span><strong>{qtd}x</strong>
+                      </div>
+                    ))}
                   </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "15px" }}>
-              <div style={{ ...cardStyle, backgroundColor: modernTheme.primaryLight, boxShadow: modernTheme.shadow, border: `2px solid ${modernTheme.success}` }}>
-                <small style={{color: modernTheme.textLight, fontWeight: "600"}}>Hoje</small>
-                <strong style={{color: modernTheme.success, fontSize: "18px"}}>R$ {calcTotal(transactions, "hoje").toFixed(2)}</strong>
-              </div>
-              <div style={{ ...cardStyle, backgroundColor: modernTheme.primaryLight, boxShadow: modernTheme.shadow, border: `2px solid ${primaryColor}` }}>
-                <small style={{color: modernTheme.textLight, fontWeight: "600"}}>Mês</small>
-                <strong style={{color: primaryColor, fontSize: "18px"}}>R$ {calcTotal(transactions, "mes").toFixed(2)}</strong>
-              </div>
-            </div>
+                  {/* RESUMO HOJE/MÊS RÁPIDO */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                    <div style={{ ...cardStyle, border: `1px solid ${modernTheme.success}`, textAlign: "center" }}>
+                      <small>Hoje</small><br/><strong>R$ {calcTotal(transactions, "hoje").toFixed(2)}</strong>
+                    </div>
+                    <div style={{ ...cardStyle, border: `1px solid ${primaryColor}`, textAlign: "center" }}>
+                      <small>Mês</small><br/><strong>R$ {calcTotal(transactions, "mes").toFixed(2)}</strong>
+                    </div>
+                  </div>
 
-            <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
-              <h3 style={{color: primaryColor, marginBottom: "15px"}}>{editId ? "✏️ Editar Lançamento" : "➕ Novo Lançamento Manual"}</h3>
-              <select value={tipoFin} onChange={e => setTipoFin(e.target.value)} style={inputStyle}>
-                <option value="receita">📈 Receita (Entrada)</option>
-                <option value="despesa">📉 Despesa (Saída)</option>
-              </select>
-              <label style={labelStyle}>📅 Data do Lançamento</label>
-              <input type="date" value={dataManualFin} onChange={e => setDataManualFin(e.target.value)} style={inputStyle} />
-              <input placeholder="📝 Descrição" value={descFin} onChange={e => setDescFin(e.target.value)} style={inputStyle} />
-              <input placeholder="💰 Valor R$" type="number" step="0.01" value={valorFin} onChange={e => setValorFin(e.target.value)} style={inputStyle} />
-              
-              <label style={labelStyle}>💳 Forma de Pagamento</label>
-              <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} style={inputStyle}>
-                <option value="dinheiro">💵 Dinheiro</option>
-                <option value="cartao">💳 Cartão</option>
-                <option value="pix">📲 Pix</option>
-              </select>
-              {formaPagamento === "cartao" && (
-                <select value={subTipoCartao} onChange={e => setSubTipoCartao(e.target.value)} style={inputStyle}>
-                  <option value="debito">💳 Cartão de Débito</option>
-                  <option value="credito">💳 Cartão de Crédito</option>
-                </select>
-              )}
-              <button onClick={handleSaveTransaction} style={{...btnStyle, background: tipoFin==="receita" ? `linear-gradient(135deg, ${modernTheme.success}, ${modernTheme.success}dd)` : `linear-gradient(135deg, ${modernTheme.danger}, ${modernTheme.danger}dd)`}}>{editId ? "💾 Salvar Alteração" : "✅ Gravar"}</button>
-              {editId && <button onClick={() => {setEditId(null); setDescFin(""); setValorFin("");}} style={{...btnStyle, backgroundColor: modernTheme.textMuted, color: modernTheme.card, marginTop:"8px"}}>❌ Cancelar</button>}
-            </section>
+                  {/* FORMULÁRIO DE LANÇAMENTO */}
+                  <section style={{...cardStyle, boxShadow: modernTheme.shadow, marginTop: "10px"}}>
+                    <h3 style={{color: primaryColor, marginBottom: "15px"}}>{editId ? "✏️ Editar" : "➕ Novo"} Lançamento</h3>
+                    <select value={tipoFin} onChange={e => setTipoFin(e.target.value)} style={inputStyle}>
+                      <option value="receita">📈 Receita (Entrada)</option>
+                      <option value="despesa">📉 Despesa (Saída)</option>
+                    </select>
+                    <input type="date" value={dataManualFin} onChange={e => setDataManualFin(e.target.value)} style={inputStyle} />
+                    <input placeholder="Descrição" value={descFin} onChange={e => setDescFin(e.target.value)} style={inputStyle} />
+                    <input placeholder="Valor R$" type="number" step="0.01" value={valorFin} onChange={e => setValorFin(e.target.value)} style={inputStyle} />
+                    <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} style={inputStyle}>
+                      <option value="pix">📲 Pix</option>
+                      <option value="dinheiro">💵 Dinheiro</option>
+                      <option value="cartao">💳 Cartão</option>
+                    </select>
+                    <button onClick={handleSaveTransaction} style={{...btnStyle, background: tipoFin==="receita" ? modernTheme.success : modernTheme.danger}}>
+                      {editId ? "💾 Salvar Alteração" : "✅ Gravar no Caixa"}
+                    </button>
+                  </section>
 
-            <h3 style={{color: modernTheme.text, marginTop: "20px", marginBottom: "10px"}}>📋 Extrato Detalhado ({transactions.length} transações)</h3>
-            {transactions.length === 0 ? (
-              <div style={{...cardStyle, textAlign: "center", color: modernTheme.textMuted, boxShadow: modernTheme.shadow}}>Nenhuma transação registrada</div>
-            ) : (
-              transactions.sort((a,b) => b.data.localeCompare(a.data)).map(t => (
-                <div key={t.id} style={{...itemStyle, marginBottom: "8px", borderRadius: modernTheme.radiusTiny, boxShadow: modernTheme.shadow}}>
-                  <span style={{flex:1}}>
-                    <small style={{color: modernTheme.textMuted, fontWeight: "600"}}>{new Date(t.data).toLocaleDateString("pt-BR")}</small><br/>
-                    <strong style={{color: modernTheme.text}}>{t.descricao}</strong>
-                    <br/>
-                    <small style={{color: modernTheme.textMuted, fontSize: "11px"}}>
-                      {t.formaPagamento === "dinheiro" && "💵 Dinheiro"}
-                      {t.formaPagamento === "cartao" && "💳 Cartão"}
-                      {t.formaPagamento === "pix" && "📲 Pix"}
-                    </small>
-                  </span>
-                  <strong style={{color: t.tipo==="receita"? modernTheme.success : modernTheme.danger, marginRight:"10px", fontSize: "14px"}}>{t.tipo==="receita"?"+":"-"} R${t.valor.toFixed(2)}</strong>
-                  <button onClick={() => {setEditId(t.id); setDescFin(t.descricao); setValorFin(t.valor); setTipoFin(t.tipo); setFormaPagamento(t.formaPagamento || "dinheiro")}} style={btnEdit}>✏️</button>
-                  <button onClick={() => deleteWithConfirm("transactions", t.id, t.descricao)} style={btnDel}>🗑️</button>
+                  {/* EXTRATO DETALHADO */}
+                  <h3 style={{marginTop: "20px", fontSize: "16px"}}>📋 Extrato Recente</h3>
+                  {transMes.length === 0 ? (
+                    <p style={{textAlign: "center", color: "#999", fontSize: "13px"}}>Nenhuma transação este mês.</p>
+                  ) : (
+                    transMes.sort((a,b) => b.data.localeCompare(a.data)).slice(0, 10).map(t => (
+                      <div key={t.id} style={{...itemStyle, marginBottom: "8px", backgroundColor: "#fff", borderRadius: "8px"}}>
+                        <span style={{flex:1}}>
+                          <small style={{color: "#999"}}>{new Date(t.data).toLocaleDateString()}</small><br/>
+                          <strong>{t.descricao}</strong>
+                        </span>
+                        <strong style={{color: t.tipo==="receita"? modernTheme.success : modernTheme.danger, marginLeft: "10px"}}>
+                          {t.tipo==="receita"?"+":"-"} R${t.valor.toFixed(2)}
+                        </strong>
+                      </div>
+                    ))
+                  )}
                 </div>
-              ))
-            )}
-          </div> // 👈 Fecha a div que envolve o conteúdo da aba
-        ); // 👈 Fecha o RETURN da função de cálculo (IIFE)
-        })()} {/* 👈 Fecha e executa a FUNÇÃO de cálculo (IIFE) */}
-      </div> // 👈 Fecha a div da animação do Financeiro
-    )} 
+              ); // 👈 Fim do Return Visual
+            })()} {/* 👈 Fim da IIFE */}
+          </div>
+        )}
 
     {/* === ABA CLIENTES === */}
     {tab === "clientes" && (
