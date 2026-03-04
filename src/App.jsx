@@ -1820,7 +1820,7 @@ ${appointments.map(a => {
                   <button onClick={() => deleteWithConfirm("transactions", t.id, t.descricao)} style={btnDel}>🗑️</button>
                 </div>
                 )
-              })() {/* 👈 Fecha a função de cálculos (IIFE) */}
+              )() ) {/* 👈 Fecha a função de cálculos (IIFE) */}
             </div> {/* 👈 Fecha a div de animação do Financeiro */}
           )} {/* 👈 Fecha o bloco {tab === "financeiro" && ... } */}
 
