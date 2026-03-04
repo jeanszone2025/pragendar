@@ -1812,7 +1812,7 @@ ${appointments.map(a => {
 
                   {/* EXTRATO DETALHADO */}
                   <h3 style={{marginTop: "20px", fontSize: "16px"}}>📋 Extrato Recente</h3>
-                  {transMes.length === 0 ? (
+                  {tMes.length === 0 ? (
                     <p style={{textAlign: "center", color: "#999", fontSize: "13px"}}>Nenhuma transação este mês.</p>
                   ) : (
                     transMes.sort((a,b) => b.data.localeCompare(a.data)).slice(0, 10).map(t => (
