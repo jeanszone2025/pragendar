@@ -1755,15 +1755,15 @@ ${appointments.map(a => {
             
             <div style={{display: "flex", justifyContent: "space-between", marginBottom: "8px", fontSize: "13px"}}>
               <span>Clientes: <strong>{totalClientes}</strong></span>
-              <span>Meta: <strong>60</strong></span>
+              <span>Meta: <strong>{metaClientes || 60}</strong></span>
             </div>
 
             {/* Barra de Progresso */}
             <div style={{width:"100%", height:"12px", backgroundColor: "#eee", borderRadius: "10px", overflow: "hidden", marginBottom: "20px"}}>
               <div style={{
-                width: `${Math.min((totalClientes / 60) * 100, 100)}%`, 
+                width: `${Math.min((totalClientes / (metaClientes || 60)) * 100, 100)}%`, 
                 height: "100%", 
-                backgroundColor: totalClientes >= 60 ? "#d4af37" : modernTheme.success,
+                backgroundColor: totalClientes >= (metaClientes || 60) ? "#d4af37" : modernTheme.success,
                 transition: "width 0.5s ease-in-out"
               }}></div>
             </div>
@@ -2209,6 +2209,14 @@ ${appointments.map(a => {
                     value={fidelidadeLimit}
                     onChange={e => setFidelidadeLimit(Number(e.target.value))}
                     style={inputStyle}
+                  />
+                   <label style={labelStyle}>🎯 Meta Mensal de Clientes</label>
+                  <input 
+                    type="number" 
+                    value={metaClientes} 
+                    onChange={e => setMetaClientes(Number(e.target.value))} 
+                    style={inputStyle} 
+                    placeholder="Ex: 60"
                   />
 
                   {/* 🆕 CAMPOS SaaS PARA PAGAMENTO */}
