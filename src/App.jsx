@@ -1702,14 +1702,15 @@ ${appointments.map(a => {
       });
 
       // Cálculos de ENTRADAS (Receita)
-      const recDia = tDia.filter(t => t.tipo === "receita").reduce((acc, t) => acc + t.valor, 0);
-      const recSemana = tSemana.filter(t => t.tipo === "receita").reduce((acc, t) => acc + t.valor, 0);
-      const recMes = tMes.filter(t => t.tipo === "receita").reduce((acc, t) => acc + t.valor, 0);
+      // Cálculos de ENTRADAS (Receita)
+      const recDia = tDia.filter(t => t.tipo === "receita").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
+      const recSemana = tSemana.filter(t => t.tipo === "receita").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
+      const recMes = tMes.filter(t => t.tipo === "receita").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
 
       // Cálculos de GASTOS (Despesa)
-      const despDia = tDia.filter(t => t.tipo === "despesa").reduce((acc, t) => acc + t.valor, 0);
-      const despSemana = tSemana.filter(t => t.tipo === "despesa").reduce((acc, t) => acc + t.valor, 0);
-      const despMes = tMes.filter(t => t.tipo === "despesa").reduce((acc, t) => acc + t.valor, 0);
+      const despDia = tDia.filter(t => t.tipo === "despesa").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
+      const despSemana = tSemana.filter(t => t.tipo === "despesa").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
+      const despMes = tMes.filter(t => t.tipo === "despesa").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
 
       // Métrica de Clientes (Mês)
       const appsMes = appointments.filter(a => {
@@ -1815,14 +1816,17 @@ ${appointments.map(a => {
                   {tMes.length === 0 ? (
                     <p style={{textAlign: "center", color: "#999", fontSize: "13px"}}>Nenhuma transação este mês.</p>
                   ) : (
-                    tMes.sort((a,b) => b.data.localeCompare(a.data)).slice(0, 10).map(t => (
+                    // Blindagem: Filtra itens corrompidos e garante que a data exista para não dar erro
+                    tMes.filter(t => t && t.data && t.valor !== undefined)
+                        .sort((a,b) => (b.data || "").localeCompare(a.data || ""))
+                        .slice(0, 10).map(t => (
                       <div key={t.id} style={{...itemStyle, marginBottom: "8px", backgroundColor: "#fff", borderRadius: "8px"}}>
                         <span style={{flex:1}}>
-                          <small style={{color: "#999"}}>{new Date(t.data).toLocaleDateString()}</small><br/>
-                          <strong>{t.descricao}</strong>
+                          <small style={{color: "#999"}}>{t.data ? new Date(t.data).toLocaleDateString() : "---"}</small><br/>
+                          <strong>{t.descricao || "Sem descrição"}</strong>
                         </span>
-                        <strong style={{color: t.tipo==="receita"? modernTheme.success : modernTheme.danger, marginLeft: "10px"}}>
-                          {t.tipo==="receita"?"+":"-"} R${t.valor.toFixed(2)}
+                        <strong style={{color: t.tipo === "receita" ? modernTheme.success : modernTheme.danger, marginLeft: "10px"}}>
+                          {t.tipo === "receita" ? "+" : "-"} R$ {(Number(t.valor) || 0).toFixed(2)}
                         </strong>
                       </div>
                     ))
@@ -2768,12 +2772,15 @@ ${appointments.map(a => {
 const nomeMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 const calcTotal = (list, p) => {
+  if (!list || !Array.isArray(list)) return 0; // Proteção se a lista sumir
   const h = new Date().toLocaleDateString("pt-BR");
   const m = new Date().getMonth();
+  
   return list.filter(t => {
+    if (!t.data) return false; // Ignora se não tiver data
     const d = new Date(t.data);
     return (p === "hoje" ? d.toLocaleDateString("pt-BR") === h : d.getMonth() === m) && t.tipo === "receita";
-  }).reduce((acc, c) => acc + c.valor, 0);
+  }).reduce((acc, c) => acc + (Number(c.valor) || 0), 0); // Garante que c.valor seja número
 };
 
 const inputStyle = { width: "100%", padding: "12px", marginBottom: "12px", borderRadius: "8px", border: "1px solid #ddd", boxSizing: "border-box" };
