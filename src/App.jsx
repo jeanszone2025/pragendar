@@ -56,6 +56,7 @@ function PaginaAgendamentoCliente({ tenantId }) {
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState(1); // 1: Serviço, 2: Data/Hora, 3: Confirmação, 4: Pagamento
   const [appointments, setAppointments] = useState([]);
+  const [metaClientes, setMetaClientes] = useState(60);
 
   // Procure onde você definiu o modernTheme e substitua por isso:
 const temaId = profile?.themeId || "classic";
@@ -685,6 +686,7 @@ export default function App() {
   const [aiQuery, setAiQuery] = useState("");
   const [aiResponse, setAiResponse] = useState("Olá! Sou sua Gerente Virtual.");
   const [aiChatHistory, setAiChatHistory] = useState([]);
+  const [metaClientes, setMetaClientes] = useState(60);
 
   // ========== THEME ENGINE ==========
   // ========== THEME ENGINE DINÂMICO ==========
@@ -779,6 +781,7 @@ async function loadProfile(uid) {
       setHorarioFechamento(data.horarioFechamento || "19:00");
       setFidelidadeLimit(data.fidelidadeLimit || 10);
       setPrimaryColor(data.primaryColor || "#d81b60");
+      setMetaClientes(data.metaClientes || 60);
 
       // 2. 🆕 Dados do SaaS (Sinal e Pagamentos)
       setChavePix(data.chavePix || "");
@@ -805,23 +808,34 @@ async function loadProfile(uid) {
   }
 }
 
-    const handleFileUpload = async (e) => { // <--- ESTE ASYNC É O QUE FALTA!
-    const file = e.target.files[0];
-    if (!file || !user) return;
+    const handleFileUpload = async (e) => {
+  const file = e.target.files[0];
+  if (!file || !user) return;
 
-    setUploadingLogo(true);
-    try {
-      const storageRef = ref(storage, `logos/${user.uid}`);
-      const snapshot = await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(snapshot.ref);
-      setLogoUrl(url);
-      alert("✅ Imagem carregada! Clique em 'Salvar Alterações' para confirmar.");
-    } catch (error) {
-      alert("❌ Erro ao carregar imagem: " + error.message);
-    } finally {
-      setUploadingLogo(false);
-    }
-  };
+  // 1. Inicia o carregamento (pode colocar um "Girando..." na tela)
+  setUploadingLogo(true);
+
+  try {
+    // 2. Define onde a foto vai ficar (Pasta logos / ID único do profissional)
+    const storageRef = ref(storage, `logos/${user.uid}`);
+    
+    // 3. Faz o Upload real para a nuvem
+    const snapshot = await uploadBytes(storageRef, file);
+    
+    // 4. Pergunta para o Firebase: "Qual o link dessa foto que acabei de subir?"
+    const url = await getDownloadURL(snapshot.ref);
+    
+    // 5. Atualiza o "estado" para a foto aparecer no app na hora
+    setLogoUrl(url); 
+    
+    alert("✅ Logo atualizada com sucesso! Não esqueça de Salvar as Alterações.");
+  } catch (error) {
+    console.error("Erro no upload:", error);
+    alert("❌ Erro ao subir imagem. Tente uma foto menor.");
+  } finally {
+    setUploadingLogo(false);
+  }
+};
 
   const handleCSVImport = async (e) => {
     const file = e.target.files[0];
@@ -916,6 +930,7 @@ async function loadProfile(uid) {
         linkCartao,
         porcentagemSinal: Number(porcentagemSinal),
         termosUso,
+        metaClientes: Number(metaClientes),
         updatedAt: new Date().toISOString()
       }, { merge: true });
 
@@ -1074,7 +1089,39 @@ async function loadProfile(uid) {
     
     window.open(link, "_blank");
   };
+const handleSaveAppointment = async () => {
+    if (!selCliente || !selServico) {
+      alert("⚠️ Por favor, selecione a cliente e o serviço!");
+      return;
+    }
 
+    const dataHora = new Date(selectedDate);
+    dataHora.setHours(selHora, 0, 0, 0);
+
+    const d = {
+      clientId: selCliente,
+      serviceId: selServico,
+      dataHora: dataHora.toISOString(),
+      status: "pendente",
+      tenantId: user.uid,
+      // Se for um agendamento novo, salvamos quem é a cliente pelo nome também para facilitar
+      clientName: getNome(clients, selCliente)
+    };
+
+    try {
+      if (editAppId) {
+        await updateDoc(doc(db, "appointments", editAppId), d);
+      } else {
+        await addDoc(collection(db, "appointments"), d);
+      }
+      setShowModal(false);
+      loadData(user.uid);
+      alert("✅ Agendamento salvo com sucesso!");
+    } catch (error) {
+      console.error("Erro ao salvar agendamento:", error);
+      alert("❌ Erro ao salvar. Tente novamente.");
+    }
+  };
   const handleSaveTransaction = async () => {
     const d = { 
       descricao: descFin, 
@@ -1149,28 +1196,48 @@ tr:nth-child(even) { background: #f5f5f5; }
 </div>
 <div style="background: ${primaryColor}; color: white; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
 <h3 style="margin: 0; font-size: 28px;">R$ ${chart.total}</h3>
-<small>Total Recebido</small></div>
+<small>Total Recebido</small>
+</div>
 <h2 style="color: ${primaryColor}; border-bottom: 2px solid ${primaryColor}; padding-bottom: 10px;">Agendamentos Realizados</h2>
-<table><thead><tr><th>Data/Hora</th><th>Cliente</th><th>Serviço</th><th>Valor</th><th>Status</th></tr></thead><tbody>
+<table>
+<thead>
+<tr>
+<th>Data/Hora</th>
+<th>Cliente</th>
+<th>Serviço</th>
+<th>Valor</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
 ${appointments.map(a => {
   const serv = services.find(s => s.id === a.serviceId);
   const valor = serv?.preco || 0;
-  return `<tr><td>${new Date(a.dataHora).toLocaleDateString("pt-BR")} ${String(new Date(a.dataHora).getHours()).padStart(2, "0")}:${String(new Date(a.dataHora).getMinutes()).padStart(2, "0")}</td><td>${getNome(clients, a.clientId)}</td><td>${getNome(services, a.serviceId)}</td><td>R$ ${valor}</td><td>${a.status === "pago" ? "✅ Pago" : "⏳ Pendente"}</td></tr>`;
+  const cli = clients.find(c => c.id === a.clientId);
+  return `<tr><td>${new Date(a.dataHora).toLocaleDateString("pt-BR")} ${String(new Date(a.dataHora).getHours()).padStart(2, "0")}:${String(new Date(a.dataHora).getMinutes()).padStart(2, "0")}</td><td>${cli?.nome || "---"}</td><td>${serv?.nome || "---"}</td><td>R$ ${valor.toFixed(2)}</td><td>${a.status === "pago" ? "✅ Pago" : "⏳ Pendente"}</td></tr>`;
 }).join("")}
-<tr class="total-row"><td colspan="3" style="text-align: right;">TOTAL FATURADO:</td><td colspan="2">R$ ${appointments.filter(a => a.status === "pago").reduce((acc, a) => {
+<tr style="font-weight: bold; background: #ffe0ec;">
+<td colspan="3" style="text-align: right;">TOTAL FATURADO:</td>
+<td colspan="2">R$ ${appointments.filter(a => a.status === "pago").reduce((acc, a) => {
   const serv = services.find(s => s.id === a.serviceId);
   return acc + (serv?.preco || 0);
-}, 0).toFixed(2)}</td></tr></tbody></table>
+}, 0).toFixed(2)}</td>
+</tr>
+</tbody>
+</table>
 <h2 style="color: ${primaryColor}; border-bottom: 2px solid ${primaryColor}; padding-bottom: 10px; margin-top: 30px;">Resumo de Clientes</h2>
 <p style="font-size: 12px; color: #666;">Total de clientes: <strong>${clients.length}</strong> | Total de atendimentos: <strong>${appointments.length}</strong></p>
 <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; color: #999; font-size: 11px;">
-<p>Relatório gerado automaticamente pelo Pragendar R$ em ${new Date().toLocaleString("pt-BR")}</p></div></div>
-<script>window.print(); window.close();</script></body></html>`;
+<p>Relatório gerado automaticamente pelo Pragendar R$ em ${new Date().toLocaleString("pt-BR")}</p>
+</div>
+</div>
+<script>window.print(); window.close();</script>
+</body>
+</html>`;
 
     win.document.write(html);
     win.document.close();
   };
-
   const askAI = async (pergunta) => {
   const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
@@ -1353,54 +1420,46 @@ ${appointments.map(a => {
     paddingBottom: "100px", 
     fontFamily: "sans-serif" 
   }}>
-      
-      <header style={{ 
+     <header style={{ 
         display: "flex", 
-        justifyContent: "space-between", 
+        justifyContent: "space-between", // Empurra a logo pra esquerda e o Sair pra direita
         alignItems: "center", 
-        padding: "20px 15px", 
+        padding: "15px 20px", 
         backgroundColor: modernTheme.card, 
         boxShadow: modernTheme.shadow,
         marginBottom: "15px",
         borderBottom: `3px solid ${primaryColor}`
       }}>
+        {/* LADO ESQUERDO: LOGO + NOME */}
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           {logoUrl ? (
-            <img src={logoUrl} alt="Logo" style={{ width: "50px", height: "50px", borderRadius: "50%", objectFit: "cover", border: `3px solid ${primaryColor}` }} />
+            <img src={logoUrl} alt="Logo" style={{ width: "45px", height: "45px", borderRadius: "50%", objectFit: "cover", border: `2px solid ${primaryColor}` }} />
           ) : (
-            <div style={{ width: "50px", height: "50px", borderRadius: "50%", backgroundColor: primaryColor, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "24px", fontWeight: "bold" }}>✨</div>
+            <div style={{ width: "45px", height: "45px", borderRadius: "50%", backgroundColor: primaryColor, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "20px" }}>✨</div>
           )}
           <div>
-            <h1 style={{ color: modernTheme.text, margin: 0, fontSize: "18px", fontWeight: "800" }}>{nomeEmpresa || "Pragendar R$"}</h1>
-            <small style={{ color: modernTheme.textMuted, display: "block", fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px" }}>Painel Administrativo Premium</small>
+            <h1 style={{ color: modernTheme.text, margin: 0, fontSize: "16px", fontWeight: "800" }}>{nomeEmpresa || "Pragendar R$"}</h1>
+            <small style={{ color: modernTheme.textMuted, fontSize: "10px", display: "block" }}>Painel Administrativo</small>
           </div>
         </div>
+
+        {/* LADO DIREITO: BOTÃO SAIR */}
         <button 
           onClick={() => signOut(auth)} 
           style={{ 
-            padding: "8px 16px", 
+            padding: "6px 12px", 
             backgroundColor: "transparent", 
             color: modernTheme.danger, 
-            border: `2px solid ${modernTheme.danger}`,
-            borderRadius: modernTheme.radiusSmall,
+            border: `1px solid ${modernTheme.danger}`,
+            borderRadius: "6px",
             cursor: "pointer", 
-            fontSize: "12px", 
-            fontWeight: "bold",
-            transition: "all 0.3s ease"
-          }}
-          onMouseOver={(e) => {
-            e.target.style.backgroundColor = modernTheme.danger;
-            e.target.style.color = "white";
-          }}
-          onMouseOut={(e) => {
-            e.target.style.backgroundColor = "transparent";
-            e.target.style.color = modernTheme.danger;
+            fontSize: "11px", 
+            fontWeight: "bold"
           }}
         >
           Sair
         </button>
       </header>
-
       <nav style={{ 
         display: "flex", 
         gap: "8px", 
@@ -1541,7 +1600,7 @@ ${appointments.map(a => {
                   if (m > 11) { m = 0; y++; }
                   setViewMonth(m); setViewYear(y);
                 }} style={{...btnMini, backgroundColor: "#eee"}}>▶</button>
-              </div>
+              </div
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "5px", textAlign: "center" }}>
                 {["D", "S", "T", "Q", "Q", "S", "S"].map(d => (
@@ -1580,6 +1639,42 @@ ${appointments.map(a => {
               </div>
             </div>
 
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "5px", textAlign: "center" }}>
+                {["D", "S", "T", "Q", "Q", "S", "S"].map(d => (
+                  <small key={d} style={{ fontWeight: "bold", color: primaryColor, fontSize: "11px" }}>{d}</small>
+                ))}
+                {/* Espaços vazios para alinhar o início do mês */}
+                {Array.from({ length: new Date(viewYear, viewMonth, 1).getDay() }).map((_, i) => <div key={i}></div>)}
+                
+                {/* Dias do mês */}
+                {Array.from({ length: new Date(viewYear, viewMonth + 1, 0).getDate() }).map((_, i) => {
+                  const dia = i + 1;
+                  const dObj = new Date(viewYear, viewMonth, dia);
+                  const isSelected = selectedDate.toDateString() === dObj.toDateString();
+                  const isToday = new Date().toDateString() === dObj.toDateString();
+                  
+                  return (
+                    <div
+                      key={dia}
+                      onClick={() => setSelectedDate(dObj)}
+                      style={{
+                        padding: "8px 0",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        fontSize: "13px",
+                        backgroundColor: isSelected ? primaryColor : "transparent",
+                        color: isSelected ? "#fff" : (isToday ? primaryColor : modernTheme.text),
+                        fontWeight: (isSelected || isToday) ? "bold" : "normal",
+                        border: isToday && !isSelected ? `1px solid ${primaryColor}` : "none",
+                        transition: "all 0.2s"
+                      }}
+                    >
+                      {dia}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
             <div style={{...cardStyle, boxShadow: modernTheme.shadow, marginTop: "15px"}}>
               <h3 style={{borderBottom: `2px solid ${primaryColor}`, paddingBottom: "10px", color: modernTheme.text, margin: "0 0 15px 0"}}>📅 Dia {selectedDate.toLocaleDateString("pt-BR")}</h3>
               {(() => {
@@ -1641,121 +1736,193 @@ ${appointments.map(a => {
         )}
 
         {/* === ABA FINANCEIRO === */}
-        {tab === "financeiro" && (
-          <div>
-            {(() => {
-              const chart = getChartData();
-              return (
-                <div style={{...cardStyle, boxShadow: modernTheme.shadow, background: `linear-gradient(135deg, ${modernTheme.card} 0%, ${primaryColor}05 100%)`}}>
-                  <h3 style={{color: primaryColor, marginBottom: "20px"}}>📊 Resumo do Mês</h3>
-                  <p style={{fontSize:"14px", fontWeight:"bold", marginBottom:"15px", color: modernTheme.text}}>Total Recebido: <span style={{color: primaryColor, fontSize: "18px"}}>R$ {chart.total}</span></p>
-                  
-                  <div style={{marginBottom:"20px"}}>
-                    <div style={{marginBottom:"12px"}}>
-                      <small style={{color: modernTheme.textLight, fontWeight: "600"}}>💵 Dinheiro: R$ {chart.valores.dinheiro.toFixed(2)} ({chart.dinheiro}%)</small>
-                      <div style={{width:"100%", height:"12px", backgroundColor: modernTheme.primaryLight, borderRadius: modernTheme.radiusTiny, overflow:"hidden", marginTop: "6px"}}>
-                        <div style={{width:`${chart.dinheiro}%`, height:"100%", backgroundColor: modernTheme.success, transition: "width 0.3s ease"}}></div>
-                      </div>
-                    </div>
-                    <div style={{marginBottom:"12px"}}>
-                      <small style={{color: modernTheme.textLight, fontWeight: "600"}}>💳 Cartão: R$ {chart.valores.cartao.toFixed(2)} ({chart.cartao}%)</small>
-                      <div style={{width:"100%", height:"12px", backgroundColor: modernTheme.primaryLight, borderRadius: modernTheme.radiusTiny, overflow:"hidden", marginTop: "6px"}}>
-                        <div style={{width:`${chart.cartao}%`, height:"100%", backgroundColor: modernTheme.info, transition: "width 0.3s ease"}}></div>
-                      </div>
-                    </div>
-                    <div>
-                      <small style={{color: modernTheme.textLight, fontWeight: "600"}}>📲 Pix: R$ {chart.valores.pix.toFixed(2)} ({chart.pix}%)</small>
-                      <div style={{width:"100%", height:"12px", backgroundColor: modernTheme.primaryLight, borderRadius: modernTheme.radiusTiny, overflow:"hidden", marginTop: "6px"}}>
-                        <div style={{width:`${chart.pix}%`, height:"100%", backgroundColor: "#9c27b0", transition: "width 0.3s ease"}}></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
+{tab === "financeiro" && (
+  <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
+    {(() => {
+      const hoje = new Date();
+      const hojeFmt = hoje.toLocaleDateString("pt-BR");
+      
+      // Cálculo do início da semana (último domingo)
+      const inicioSemana = new Date(hoje);
+      inicioSemana.setDate(hoje.getDate() - hoje.getDay());
+      inicioSemana.setHours(0,0,0,0);
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "15px" }}>
-              <div style={{ ...cardStyle, backgroundColor: modernTheme.primaryLight, boxShadow: modernTheme.shadow, border: `2px solid ${modernTheme.success}` }}>
-                <small style={{color: modernTheme.textLight, fontWeight: "600"}}>Hoje</small>
-                <strong style={{color: modernTheme.success, fontSize: "18px"}}>R$ {calcTotal(transactions, "hoje").toFixed(2)}</strong>
-              </div>
-              <div style={{ ...cardStyle, backgroundColor: modernTheme.primaryLight, boxShadow: modernTheme.shadow, border: `2px solid ${primaryColor}` }}>
-                <small style={{color: modernTheme.textLight, fontWeight: "600"}}>Mês</small>
-                <strong style={{color: primaryColor, fontSize: "18px"}}>R$ {calcTotal(transactions, "mes").toFixed(2)}</strong>
+      const mesAtual = hoje.getMonth();
+      const anoAtual = hoje.getFullYear();
+
+      // Filtros de Transações
+      const tDia = transactions.filter(t => t && t.data && new Date(t.data).toLocaleDateString("pt-BR") === hojeFmt);
+      const tSemana = transactions.filter(t => t && t.data && new Date(t.data) >= inicioSemana);
+      const tMes = transactions.filter(t => {
+        if (!t || !t.data) return false;
+        const d = new Date(t.data);
+        return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
+      });
+
+      // Cálculos de ENTRADAS (Receita)
+      const recDia = tDia.filter(t => t.tipo === "receita").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
+      const recSemana = tSemana.filter(t => t.tipo === "receita").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
+      const recMes = tMes.filter(t => t.tipo === "receita").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
+
+      // Cálculos de GASTOS (Despesa)
+      const despDia = tDia.filter(t => t.tipo === "despesa").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
+      const despSemana = tSemana.filter(t => t.tipo === "despesa").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
+      const despMes = tMes.filter(t => t.tipo === "despesa").reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
+
+      // Métrica de Clientes (Mês)
+      const appsMes = appointments.filter(a => {
+        if (!a || !a.dataHora) return false;
+        const d = new Date(a.dataHora);
+        return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
+      });
+      const totalClientes = new Set(appsMes.map(a => a.clientId)).size;
+      const retornosMarked = appointments.filter(a => a.status === "pago").length;
+
+      return (   
+        <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+          
+          {/* 📈 CARD DE ENTRADAS */}
+          <div style={{...cardStyle, boxShadow: modernTheme.shadow, borderLeft: `5px solid ${modernTheme.success}`}}>
+            <h3 style={{color: modernTheme.success, marginBottom: "15px"}}>📈 Recebidos</h3>
+            <div style={{display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", textAlign: "center"}}>
+              <div><small style={{color: "#999", fontSize: "11px"}}>Hoje</small><br/><strong style={{fontSize: "13px"}}>R$ {recDia.toFixed(2)}</strong></div>
+              <div><small style={{color: "#999", fontSize: "11px"}}>Semana</small><br/><strong style={{fontSize: "13px"}}>R$ {recSemana.toFixed(2)}</strong></div>
+              <div style={{backgroundColor: modernTheme.primaryLight, borderRadius: "8px", padding: "5px"}}>
+                <small style={{color: primaryColor, fontSize: "11px", fontWeight: "bold"}}>Mês</small><br/>
+                <strong style={{color: primaryColor, fontSize: "13px"}}>R$ {recMes.toFixed(2)}</strong>
               </div>
             </div>
-
-            <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
-              <h3 style={{color: primaryColor, marginBottom: "15px"}}>{editId ? "✏️ Editar Lançamento" : "➕ Novo Lançamento Manual"}</h3>
-              <select value={tipoFin} onChange={e => setTipoFin(e.target.value)} style={inputStyle}>
-                <option value="receita">📈 Receita (Entrada)</option>
-                <option value="despesa">📉 Despesa (Saída)</option>
-              </select>
-              <label style={labelStyle}>📅 Data do Lançamento</label>
-              <input type="date" value={dataManualFin} onChange={e => setDataManualFin(e.target.value)} style={inputStyle} />
-              <input placeholder="📝 Descrição" value={descFin} onChange={e => setDescFin(e.target.value)} style={inputStyle} />
-              <input placeholder="💰 Valor R$" type="number" step="0.01" value={valorFin} onChange={e => setValorFin(e.target.value)} style={inputStyle} />
-              
-              <label style={labelStyle}>💳 Forma de Pagamento</label>
-              <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} style={inputStyle}>
-                <option value="dinheiro">💵 Dinheiro</option>
-                <option value="cartao">💳 Cartão</option>
-                <option value="pix">📲 Pix</option>
-              </select>
-              {formaPagamento === "cartao" && (
-                <select value={subTipoCartao} onChange={e => setSubTipoCartao(e.target.value)} style={inputStyle}>
-                  <option value="debito">💳 Cartão de Débito</option>
-                  <option value="credito">💳 Cartão de Crédito</option>
-                </select>
-              )}
-              <button onClick={handleSaveTransaction} style={{...btnStyle, background: tipoFin==="receita" ? `linear-gradient(135deg, ${modernTheme.success}, ${modernTheme.success}dd)` : `linear-gradient(135deg, ${modernTheme.danger}, ${modernTheme.danger}dd)`}}>{editId ? "💾 Salvar Alteração" : "✅ Gravar"}</button>
-              {editId && <button onClick={() => {setEditId(null); setDescFin(""); setValorFin("");}} style={{...btnStyle, backgroundColor: modernTheme.textMuted, color: modernTheme.card, marginTop:"8px"}}>❌ Cancelar</button>}
-            </section>
-
-            <h3 style={{color: modernTheme.text, marginTop: "20px", marginBottom: "10px"}}>📋 Extrato Detalhado ({transactions.length} transações)</h3>
-            {transactions.length === 0 ? (
-              <div style={{...cardStyle, textAlign: "center", color: modernTheme.textMuted, boxShadow: modernTheme.shadow}}>Nenhuma transação registrada</div>
-            ) : (
-              transactions.sort((a,b) => b.data.localeCompare(a.data)).map(t => (
-                <div key={t.id} style={{...itemStyle, marginBottom: "8px", borderRadius: modernTheme.radiusTiny, boxShadow: modernTheme.shadow}}>
-                  <span style={{flex:1}}>
-                    <small style={{color: modernTheme.textMuted, fontWeight: "600"}}>{new Date(t.data).toLocaleDateString("pt-BR")}</small><br/>
-                    <strong style={{color: modernTheme.text}}>{t.descricao}</strong>
-                    <br/>
-                    <small style={{color: modernTheme.textMuted, fontSize: "11px"}}>
-                      {t.formaPagamento === "dinheiro" && "💵 Dinheiro"}
-                      {t.formaPagamento === "cartao" && "💳 Cartão"}
-                      {t.formaPagamento === "pix" && "📲 Pix"}
-                    </small>
-                  </span>
-                  <strong style={{color: t.tipo==="receita"? modernTheme.success : modernTheme.danger, marginRight:"10px", fontSize: "14px"}}>{t.tipo==="receita"?"+":"-"} R${t.valor.toFixed(2)}</strong>
-                  <button onClick={() => {setEditId(t.id); setDescFin(t.descricao); setValorFin(t.valor); setTipoFin(t.tipo); setFormaPagamento(t.formaPagamento || "dinheiro")}} style={btnEdit}>✏️</button>
-                  <button onClick={() => deleteWithConfirm("transactions", t.id, t.descricao)} style={btnDel}>🗑️</button>
-                </div>
-              ))
-            )}
           </div>
-        )}
 
-        {/* === ABA CLIENTES === */}
-        {tab === "clientes" && (
-          <div>
-            <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
-              <h3 style={{color: primaryColor, marginBottom: "15px"}}>{editId ? "✏️ Editar" : "👤 Novo"} Cliente</h3>
-              <input placeholder="👤 Nome Completo" value={nomeCliente} onChange={e => setNomeCliente(e.target.value)} style={inputStyle} />
-              <input placeholder="📱 Telefone" value={telefone} onChange={e => setTelefone(e.target.value)} style={inputStyle} />
-              <button onClick={async () => {
-                if (!nomeCliente.trim()) return alert("Digite o nome do cliente");
-                const d = { nome: nomeCliente, telefone, tenantId: user.uid };
-                try {
-                  if(editId) await updateDoc(doc(db, "clients", editId), d);
-                  else await addDoc(collection(db, "clients"), d);
-                  setEditId(null); setNomeCliente(""); setTelefone(""); loadData(user.uid);
-                } catch (error) {
-                  alert("❌ Erro: " + error.message);
-                }
-              }} style={{...btnStyle, background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}dd)`}}>✅ Salvar Cliente</button>
-            </section>
+          {/* 📉 CARD DE GASTOS */}
+          <div style={{...cardStyle, boxShadow: modernTheme.shadow, borderLeft: `5px solid ${modernTheme.danger}`}}>
+            <h3 style={{color: modernTheme.danger, marginBottom: "15px"}}>📉 Gastos</h3>
+            <div style={{display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", textAlign: "center"}}>
+              <div><small style={{color: "#999", fontSize: "11px"}}>Hoje</small><br/><strong style={{fontSize: "13px"}}>R$ {despDia.toFixed(2)}</strong></div>
+              <div><small style={{color: "#999", fontSize: "11px"}}>Semana</small><br/><strong style={{fontSize: "13px"}}>R$ {despSemana.toFixed(2)}</strong></div>
+              <div style={{backgroundColor: "#fee2e2", borderRadius: "8px", padding: "5px"}}>
+                <small style={{color: "#b91c1c", fontSize: "11px", fontWeight: "bold"}}>Mês</small><br/>
+                <strong style={{color: "#b91c1c", fontSize: "13px"}}>R$ {despMes.toFixed(2)}</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* 🎯 CARD DE METAS E PERFORMANCE */}
+          <div style={{...cardStyle, boxShadow: modernTheme.shadow}}>
+            <h3 style={{color: primaryColor, marginBottom: "15px"}}>🎯 Performance do Mês</h3>
+            
+            <div style={{display: "flex", justifyContent: "space-between", marginBottom: "8px", fontSize: "13px"}}>
+              <span>Clientes: <strong>{totalClientes}</strong></span>
+              <span>Meta: <strong>{metaClientes || 60}</strong></span>
+            </div>
+
+            {/* Barra de Progresso */}
+            <div style={{width:"100%", height:"12px", backgroundColor: "#eee", borderRadius: "10px", overflow: "hidden", marginBottom: "20px"}}>
+              <div style={{
+                width: `${Math.min((totalClientes / (metaClientes || 60)) * 100, 100)}%`, 
+                height: "100%", 
+                backgroundColor: totalClientes >= (metaClientes || 60) ? "#d4af37" : modernTheme.success,
+                transition: "width 0.5s ease-in-out"
+              }}></div>
+            </div>
+
+            {/* Grid de Retornos */}
+            <div style={{display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px"}}>
+              <div style={{padding: "12px", backgroundColor: "#e8f5e9", borderRadius: "10px", textAlign: "center", border: "1px solid #c8e6c9"}}>
+                <small style={{color: "#2e7d32", fontSize: "11px", fontWeight: "bold"}}>COM RETORNO</small><br/>
+                <strong style={{fontSize: "18px", color: "#2e7d32"}}>{retornosMarked}</strong>
+              </div>
+              <div style={{padding: "12px", backgroundColor: "#fff3e0", borderRadius: "10px", textAlign: "center", border: "1px solid #ffe0b2"}}>
+                <small style={{color: "#ef6c00", fontSize: "11px", fontWeight: "bold"}}>A AGENDAR</small><br/>
+                <strong style={{fontSize: "18px", color: "#ef6c00"}}>{totalClientes - retornosMarked}</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* RESUMO HOJE/MÊS */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+            <div style={{ ...cardStyle, border: `1px solid ${modernTheme.success}`, textAlign: "center" }}>
+              <small>Hoje</small><br/><strong>R$ {recDia.toFixed(2)}</strong>
+            </div>
+            <div style={{ ...cardStyle, border: `1px solid ${primaryColor}`, textAlign: "center" }}>
+              <small>Mês</small><br/><strong>R$ {recMes.toFixed(2)}</strong>
+            </div>
+          </div>
+
+          {/* FORMULÁRIO DE LANÇAMENTO */}
+          <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
+            <h3 style={{color: primaryColor, marginBottom: "15px"}}>{editId ? "✏️ Editar" : "➕ Novo"} Lançamento</h3>
+            <select value={tipoFin} onChange={e => setTipoFin(e.target.value)} style={inputStyle}>
+              <option value="receita">📈 Receita (Entrada)</option>
+              <option value="despesa">📉 Despesa (Saída)</option>
+            </select>
+            <input type="date" value={dataManualFin} onChange={e => setDataManualFin(e.target.value)} style={inputStyle} />
+            <input placeholder="Descrição" value={descFin} onChange={e => setDescFin(e.target.value)} style={inputStyle} />
+            <input placeholder="Valor R$" type="number" step="0.01" value={valorFin} onChange={e => setValorFin(e.target.value)} style={inputStyle} />
+            <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} style={inputStyle}>
+              <option value="pix">📲 Pix</option>
+              <option value="dinheiro">💵 Dinheiro</option>
+              <option value="cartao">💳 Cartão</option>
+            </select>
+            <button onClick={handleSaveTransaction} style={{...btnStyle, background: tipoFin==="receita" ? modernTheme.success : modernTheme.danger}}>
+              {editId ? "💾 Salvar Alteração" : "✅ Gravar no Caixa"}
+            </button>
+            {editId && (
+              <button onClick={() => {setEditId(null); setDescFin(""); setValorFin("");}} style={{...btnStyle, backgroundColor: modernTheme.textMuted, marginTop: "8px"}}>
+                ❌ Cancelar
+              </button>
+            )}
+          </section>
+
+          {/* EXTRATO DETALHADO */}
+          <h3 style={{marginTop: "20px", fontSize: "16px"}}>📋 Extrato Recente</h3>
+          {tMes.length === 0 ? (
+            <p style={{textAlign: "center", color: "#999", fontSize: "13px"}}>Nenhuma transação este mês.</p>
+          ) : (
+            tMes.filter(t => t && t.data && t.valor !== undefined)
+                .sort((a,b) => (b.data || "").localeCompare(a.data || ""))
+                .slice(0, 10).map(t => (
+              <div key={t.id} style={{...itemStyle, marginBottom: "8px", backgroundColor: "#fff", borderRadius: "8px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)"}}>
+                <span style={{flex:1}}>
+                  <small style={{color: "#999"}}>{t.data ? new Date(t.data).toLocaleDateString("pt-BR") : "---"}</small><br/>
+                  <strong>{t.descricao || "Sem descrição"}</strong>
+                  <br/>
+                  <small style={{color: "#666", fontSize: "10px"}}>
+                    {t.formaPagamento === "pix" && "📲 Pix"}
+                    {t.formaPagamento === "dinheiro" && "💵 Dinheiro"}
+                    {t.formaPagamento === "cartao" && "💳 Cartão"}
+                  </small>
+                </span>
+                <strong style={{color: t.tipo === "receita" ? modernTheme.success : modernTheme.danger, marginRight: "10px"}}>
+                  {t.tipo === "receita" ? "+" : "-"} R$ {(Number(t.valor) || 0).toFixed(2)}
+                </strong>
+              </div>
+            ))
+          )}
+        </div>
+      );
+    })()}
+  </div>
+)}
+    {/* === ABA CLIENTES === */}
+    {tab === "clientes" && (
+      <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
+        <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
+          <h3 style={{color: primaryColor, marginBottom: "15px"}}>{editId ? "✏️ Editar" : "👤 Novo"} Cliente</h3>
+          <input placeholder="👤 Nome Completo" value={nomeCliente} onChange={e => setNomeCliente(e.target.value)} style={inputStyle} />
+          <input placeholder="📱 Telefone" value={telefone} onChange={e => setTelefone(e.target.value)} style={inputStyle} />
+          <button onClick={async () => {
+            if (!nomeCliente.trim()) return alert("Digite o nome do cliente");
+            const d = { nome: nomeCliente, telefone, tenantId: user.uid };
+            try {
+              if(editId) await updateDoc(doc(db, "clients", editId), d);
+              else await addDoc(collection(db, "clients"), d);
+              setEditId(null); setNomeCliente(""); setTelefone(""); loadData(user.uid);
+            } catch (error) {
+              alert("❌ Erro: " + error.message);
+            }
+          }} style={{...btnStyle, background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}dd)`}}>✅ Salvar Cliente</button>
+        </section>
 
             <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
               <h3 style={{color: primaryColor, marginBottom: "10px"}}>📥 Importar Clientes via CSV</h3>
@@ -1777,20 +1944,22 @@ ${appointments.map(a => {
               {alfabeto.map(l => <button key={l} onClick={() => setSelectedLetter(l)} style={btnLetter(selectedLetter === l)}>{l}</button>)}
               <button onClick={() => setSelectedLetter("")} style={btnLetter(selectedLetter === "")}>Tudo</button>
             </div>
-            <p style={{fontSize: "12px", color: modernTheme.textMuted, fontWeight: "600"}}>👥 Total: {clients.filter(c => c.nome?.toLowerCase().includes(searchTerm.toLowerCase()) && (selectedLetter==="" || c.nome?.toUpperCase().startsWith(selectedLetter))).length} clientes</p>
+            <p style={{fontSize: "12px", color: modernTheme.textMuted, fontWeight: "600"}}>
+              👥 Total: {clients.filter(c => (c.nome || "").toLowerCase().includes(searchTerm.toLowerCase()) && (selectedLetter==="" || (c.nome || "").toUpperCase().startsWith(selectedLetter))).length} clientes
+            </p>
 
-            {clients.filter(c => c.nome?.toLowerCase().includes(searchTerm.toLowerCase()) && (selectedLetter==="" || c.nome?.toUpperCase().startsWith(selectedLetter))).map(c => {
+            {clients.filter(c => (c.nome || "").toLowerCase().includes(searchTerm.toLowerCase()) && (selectedLetter==="" || (c.nome || "").toUpperCase().startsWith(selectedLetter))).map(c => {
               const fidelity = getClientFidelity(c.id);
               return (
                 <div key={c.id} style={{...itemStyle, borderLeft: fidelity.achieved ? `4px solid ${modernTheme.warning}` : "1px solid #eee", borderRadius: modernTheme.radiusTiny, marginBottom: "8px", boxShadow: modernTheme.shadow}}>
                   <span style={{flex:1, cursor:"pointer"}} onClick={() => {setSelectedClientForHistory(c); setShowClientHistoryModal(true);}}>
-                    <strong style={{color: modernTheme.text}}>{c.nome}</strong>
-                    <br/><small style={{color: modernTheme.textMuted}}>{c.telefone}</small>
+                    <strong style={{color: modernTheme.text}}>{c.nome || "Sem Nome"}</strong>
+                    <br/><small style={{color: modernTheme.textMuted}}>{c.telefone || "Sem telefone"}</small>
                     {fidelity.achieved && <br/>}
                     {fidelity.achieved && <small style={{color: modernTheme.warning, fontWeight:"bold"}}>🎁 Prêmio atingido!</small>}
                   </span>
-                  <button onClick={() => {setEditId(c.id); setNomeCliente(c.nome); setTelefone(c.telefone)}} style={btnEdit}>✏️</button>
-                  <button onClick={() => deleteWithConfirm("clients", c.id, c.nome, c.telefone)} style={btnDel}>🗑️</button>
+                  <button onClick={() => {setEditId(c.id); setNomeCliente(c.nome || ""); setTelefone(c.telefone || "")}} style={btnEdit}>✏️</button>
+                  <button onClick={() => deleteWithConfirm("clients", c.id, c.nome || "Cliente", c.telefone)} style={btnDel}>🗑️</button>
                 </div>
               );
             })}
@@ -2098,6 +2267,14 @@ ${appointments.map(a => {
                     value={fidelidadeLimit}
                     onChange={e => setFidelidadeLimit(Number(e.target.value))}
                     style={inputStyle}
+                  />
+                   <label style={labelStyle}>🎯 Meta Mensal de Clientes</label>
+                  <input 
+                    type="number" 
+                    value={metaClientes} 
+                    onChange={e => setMetaClientes(Number(e.target.value))} 
+                    style={inputStyle} 
+                    placeholder="Ex: 60"
                   />
 
                   {/* 🆕 CAMPOS SaaS PARA PAGAMENTO */}
@@ -2578,32 +2755,57 @@ ${appointments.map(a => {
         </div>
       )}
 
-      {/* ========== MODAIS DE AGENDAMENTO E PAGAMENTO ========== */}
+      {/* ========== MODAL DE AGENDAMENTO (VERSÃO COMPLETA) ========== */}
       {showModal && (
         <div style={modalOverlay}>
-          <div style={{...modalContent, borderTop: `4px solid ${primaryColor}`}}>
-            <h3 style={{color: primaryColor}}>📅 {editAppId ? "Editar" : "Novo"} Agendamento</h3>
+          <div style={{...modalContent, borderTop: `4px solid ${primaryColor}`, maxWidth: "400px"}}>
+            <h3 style={{color: primaryColor, marginBottom: "15px"}}>
+              {editAppId ? "✏️ Editar Horário" : "📅 Novo Agendamento"}
+            </h3>
+            
+            <p style={{fontSize: "12px", color: "#666", marginBottom: "10px"}}>
+              Horário selecionado: <strong>{String(selHora).padStart(2, "0")}:00h</strong>
+            </p>
+
+            <label style={labelStyle}>👤 Buscar Cliente</label>
             <input 
-              placeholder="🔍 Nome da cliente..." 
+              placeholder="Digite o nome..." 
               value={clientSearch} 
               onChange={e => {setClientSearch(e.target.value); setSelCliente("");}} 
               style={inputStyle} 
             />
+            
             {clientSearch && !selCliente && (
               <div style={dropdownStyle}>
                 {clients.filter(c => c.nome.toLowerCase().includes(clientSearch.toLowerCase())).slice(0, 5).map(c => (
                   <div key={c.id} onClick={() => {setSelCliente(c.id); setClientSearch(c.nome)}} style={dropdownItem}>
-                    {c.nome}
+                    {c.nome} - <small>{c.telefone}</small>
                   </div>
                 ))}
               </div>
             )}
+
+            <label style={labelStyle}>💇 Serviço</label>
             <select value={selServico} onChange={e => setSelServico(e.target.value)} style={inputStyle}>
               <option value="">Selecione o Serviço</option>
-              {services.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+              {services.map(s => <option key={s.id} value={s.id}>{s.nome} (R$ {s.preco})</option>)}
             </select>
-            {/* ... final do código do modal de agendamento que já existe ... */}
-            <button onClick={() => setShowModal(false)} style={{...btnStyle, backgroundColor: "#ccc", marginTop: "10px"}}>Cancelar</button>
+
+            <div style={{ marginTop: "20px", display: "flex", flexDirection: "column", gap: "10px" }}>
+              <button 
+                onClick={handleSaveAppointment} 
+                style={{...btnStyle, backgroundColor: modernTheme.success}}
+              >
+                {editAppId ? "💾 Salvar Alterações" : "✅ Confirmar Agendamento"}
+              </button>
+
+              <button 
+                onClick={() => setShowModal(false)} 
+                style={{...btnStyle, backgroundColor: "#ccc"}}
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -2647,12 +2849,15 @@ ${appointments.map(a => {
 const nomeMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 const calcTotal = (list, p) => {
+  if (!list || !Array.isArray(list)) return 0; // Proteção se a lista sumir
   const h = new Date().toLocaleDateString("pt-BR");
   const m = new Date().getMonth();
+  
   return list.filter(t => {
+    if (!t.data) return false; // Ignora se não tiver data
     const d = new Date(t.data);
     return (p === "hoje" ? d.toLocaleDateString("pt-BR") === h : d.getMonth() === m) && t.tipo === "receita";
-  }).reduce((acc, c) => acc + c.valor, 0);
+  }).reduce((acc, c) => acc + (Number(c.valor) || 0), 0); // Garante que c.valor seja número
 };
 
 const inputStyle = { width: "100%", padding: "12px", marginBottom: "12px", borderRadius: "8px", border: "1px solid #ddd", boxSizing: "border-box" };
@@ -2670,3 +2875,4 @@ const btnDel = { backgroundColor: "#ffebee", color: "#f44336", border: "none", p
 const btnWhatsApp = { backgroundColor: "#e8f5e9", color: "#2e7d32", border: "none", padding: "5px", borderRadius: "4px", cursor: "pointer", marginRight: "5px" };
 const btnPay = { backgroundColor: "#fff3e0", color: "#ef6c00", border: "none", padding: "5px", borderRadius: "4px", cursor: "pointer", marginRight: "5px" };
 const btnLetter = (active) => ({ padding: "5px", minWidth: "25px", backgroundColor: active ? "#d81b60" : "#eee", color: active ? "#fff" : "#000", border: "none", borderRadius: "4px", cursor: "pointer" });
+  
