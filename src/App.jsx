@@ -1675,9 +1675,11 @@ ${appointments.map(a => {
                 })}
               </div>
             </div>
-            
+
             <div style={{...cardStyle, boxShadow: modernTheme.shadow, marginTop: "15px"}}>
-              <h3 style={{borderBottom: `2px solid ${primaryColor}`, paddingBottom: "10px", color: modernTheme.text, margin: "0 0 15px 0"}}>📅 Dia {selectedDate.toLocaleDateString("pt-BR")}</h3>
+              <h3 style={{borderBottom: `2px solid ${primaryColor}`, paddingBottom: "10px", color: modernTheme.text, margin: "0 0 15px 0"}}>
+                📅 Dia {selectedDate.toLocaleDateString("pt-BR")}
+              </h3>
               {(() => {
                 const horaInicio = parseInt(horarioAbertura.split(":")[0]) || 8;
                 const horaFim = parseInt(horarioFechamento.split(":")[0]) || 19;
