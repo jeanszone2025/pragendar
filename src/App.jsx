@@ -1600,7 +1600,7 @@ ${appointments.map(a => {
                   if (m > 11) { m = 0; y++; }
                   setViewMonth(m); setViewYear(y);
                 }} style={{...btnMini, backgroundColor: "#eee"}}>▶</button>
-              </div
+              </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "5px", textAlign: "center" }}>
                 {["D", "S", "T", "Q", "Q", "S", "S"].map(d => (
