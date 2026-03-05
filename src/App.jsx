@@ -1521,7 +1521,7 @@ ${appointments.map(a => {
         {tab === "agenda" && (
           <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
             
-            {/* 🔍 ÁREA DE BUSCA DE HISTÓRICO (PROJETO CRIS) */}
+            {/* 🔍 ÁREA DE BUSCA DE HISTÓRICO */}
             <div style={{...cardStyle, boxShadow: modernTheme.shadow, marginBottom: "20px", borderLeft: `5px solid ${primaryColor}`}}>
               <h3 style={{color: modernTheme.text, fontSize: "14px", margin: "0 0 10px 0", display: "flex", alignItems: "center", gap: "8px"}}>
                 <span>🔍</span> Pesquisar Histórico de Cliente
@@ -1533,7 +1533,6 @@ ${appointments.map(a => {
                 style={{...inputStyle, marginBottom: searchHistory.length >= 2 ? "15px" : "0"}}
               />
 
-              {/* LISTAGEM DE RESULTADOS */}
               {searchHistory.length >= 2 && (
                 <div style={{ maxHeight: "350px", overflowY: "auto", paddingRight: "5px" }}>
                   {filteredHistory.length === 0 ? (
@@ -1548,11 +1547,10 @@ ${appointments.map(a => {
                         <div key={app.id} style={{
                           padding: "12px",
                           borderRadius: "10px",
-                          // LÓGICA DE CORES: Cinza se passado, Cor do tema se futuro
                           backgroundColor: ehPassado ? "#f1f1f1" : modernTheme.primaryLight,
                           marginBottom: "10px",
                           border: `1px solid ${ehPassado ? "#ddd" : primaryColor + "40"}`,
-                          opacity: ehPassado ? 0.6 : 1, // "Apagado" se for passado
+                          opacity: ehPassado ? 0.6 : 1,
                           transition: "all 0.2s ease"
                         }}>
                           <div style={{display: "flex", justifyContent: "space-between", marginBottom: "5px"}}>
@@ -1573,10 +1571,6 @@ ${appointments.map(a => {
                           <p style={{margin: 0, fontSize: "13px", color: modernTheme.text}}>
                             <strong>Procedimento:</strong> {serv?.nome || "Não definido"}
                           </p>
-                          {/* Detalhes do procedimento */}
-                          <div style={{marginTop: "6px", fontSize: "11px", color: "#777", background: "rgba(255,255,255,0.4)", padding: "5px", borderRadius: "5px"}}>
-                            {serv?.descricao ? `📝 ${serv.descricao}` : "ℹ️ Sem descrição cadastrada."}
-                          </div>
                         </div>
                       );
                     })
@@ -1586,7 +1580,7 @@ ${appointments.map(a => {
               )}
             </div>
 
-            {/* 📅 CALENDÁRIO DE SELEÇÃO DE DATA (RECUPERADO) */}
+            {/* 📅 CALENDÁRIO */}
             <div style={{ ...cardStyle, boxShadow: modernTheme.shadow, marginBottom: "15px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
                 <button onClick={() => {
@@ -1606,10 +1600,8 @@ ${appointments.map(a => {
                 {["D", "S", "T", "Q", "Q", "S", "S"].map(d => (
                   <small key={d} style={{ fontWeight: "bold", color: primaryColor, fontSize: "11px" }}>{d}</small>
                 ))}
-                {/* Espaços vazios para alinhar o início do mês */}
                 {Array.from({ length: new Date(viewYear, viewMonth, 1).getDay() }).map((_, i) => <div key={i}></div>)}
                 
-                {/* Dias do mês */}
                 {Array.from({ length: new Date(viewYear, viewMonth + 1, 0).getDate() }).map((_, i) => {
                   const dia = i + 1;
                   const dObj = new Date(viewYear, viewMonth, dia);
@@ -1639,43 +1631,7 @@ ${appointments.map(a => {
               </div>
             </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "5px", textAlign: "center" }}>
-                {["D", "S", "T", "Q", "Q", "S", "S"].map(d => (
-                  <small key={d} style={{ fontWeight: "bold", color: primaryColor, fontSize: "11px" }}>{d}</small>
-                ))}
-                {/* Espaços vazios para alinhar o início do mês */}
-                {Array.from({ length: new Date(viewYear, viewMonth, 1).getDay() }).map((_, i) => <div key={i}></div>)}
-                
-                {/* Dias do mês */}
-                {Array.from({ length: new Date(viewYear, viewMonth + 1, 0).getDate() }).map((_, i) => {
-                  const dia = i + 1;
-                  const dObj = new Date(viewYear, viewMonth, dia);
-                  const isSelected = selectedDate.toDateString() === dObj.toDateString();
-                  const isToday = new Date().toDateString() === dObj.toDateString();
-                  
-                  return (
-                    <div
-                      key={dia}
-                      onClick={() => setSelectedDate(dObj)}
-                      style={{
-                        padding: "8px 0",
-                        borderRadius: "8px",
-                        cursor: "pointer",
-                        fontSize: "13px",
-                        backgroundColor: isSelected ? primaryColor : "transparent",
-                        color: isSelected ? "#fff" : (isToday ? primaryColor : modernTheme.text),
-                        fontWeight: (isSelected || isToday) ? "bold" : "normal",
-                        border: isToday && !isSelected ? `1px solid ${primaryColor}` : "none",
-                        transition: "all 0.2s"
-                      }}
-                    >
-                      {dia}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
+            {/* 📋 LISTA DE HORÁRIOS DO DIA SELECIONADO */}
             <div style={{...cardStyle, boxShadow: modernTheme.shadow, marginTop: "15px"}}>
               <h3 style={{borderBottom: `2px solid ${primaryColor}`, paddingBottom: "10px", color: modernTheme.text, margin: "0 0 15px 0"}}>
                 📅 Dia {selectedDate.toLocaleDateString("pt-BR")}
@@ -1688,20 +1644,13 @@ ${appointments.map(a => {
                 const configHoje = gradeHorarios[diaSemana];
 
                 if (!configHoje?.aberta) {
-                  return <div style={{textAlign: "center", padding: "40px 20px", color: modernTheme.textMuted, backgroundColor: modernTheme.primaryLight, borderRadius: modernTheme.radius}}>😴 Estamos fechados hoje. Volte em outro dia!</div>;
+                  return <div style={{textAlign: "center", padding: "40px 20px", color: modernTheme.textMuted, backgroundColor: modernTheme.primaryLight, borderRadius: modernTheme.radius}}>😴 Estamos fechados hoje.</div>;
                 }
 
                 return Array.from({ length: totalHoras }, (_, i) => i + horaInicio).map(hora => {
-                  if (configHoje.tipo === "fixo" && !configHoje.horas?.includes(hora)) return null;
-
-                  const agora = new Date();
-                  const dataComparacao = new Date(selectedDate);
-                  dataComparacao.setHours(hora, 0, 0, 0);
-                  const ehPassado = dataComparacao < agora;
-
                   const app = getAppDoHorario(hora);
                   const isStart = app && new Date(app.dataHora).getHours() === hora;
-                  
+                  const ehPassado = new Date(selectedDate).setHours(hora) < new Date();
 
                   return (
                     <div key={hora} style={{ 
@@ -1719,7 +1668,7 @@ ${appointments.map(a => {
                           </div>
                         ) : (
                           ehPassado ? 
-                          <span style={{color: modernTheme.textMuted, cursor:"not-allowed", fontSize: "12px"}}>Indisponível</span> :
+                          <span style={{color: modernTheme.textMuted, fontSize: "12px"}}>Indisponível</span> :
                           <span onClick={() => {setSelHora(hora); setEditAppId(null); setSelCliente(""); setClientSearch(""); setShowModal(true);}} style={{color: modernTheme.success, cursor:"pointer", fontWeight: "bold", fontSize: "12px"}}>+ Disponível</span>
                         )}
                       </div>
