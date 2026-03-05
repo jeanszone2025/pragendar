@@ -909,7 +909,68 @@ async function loadProfile(uid) {
 
     reader.readAsText(file, "UTF-8");
   };
+// 📱 FUNÇÃO 1: IMPORTAR ARQUIVO DA AGENDA (.VCF)
+const handleVCFImport = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
 
+  const reader = new FileReader();
+  reader.onload = async (event) => {
+    const content = event.target.result;
+    const contacts = [];
+    const vcardBlocks = content.split("BEGIN:VCARD");
+
+    vcardBlocks.forEach(block => {
+      // Pega o Nome (FN: ou N:)
+      const nameMatch = block.match(/FN:(.*)|N:(.*);(.*)/);
+      const name = nameMatch ? (nameMatch[1] || nameMatch[2]).replace(/;/g, " ").trim() : "";
+      
+      // Pega o Telefone (TEL:)
+      const telMatch = block.match(/TEL.*:(.*)/);
+      const tel = telMatch ? telMatch[1].replace(/\D/g, "") : "";
+
+      if (name && tel.length >= 8) {
+        contacts.push({ nome: name, telefone: tel });
+      }
+    });
+
+    if (contacts.length > 0) {
+      const batch = writeBatch(db);
+      contacts.forEach(c => {
+        const newRef = doc(collection(db, "clients"));
+        batch.set(newRef, { ...c, tenantId: user.uid, createdAt: serverTimestamp() });
+      });
+      await batch.commit();
+      alert(`✅ Sucesso! ${contacts.length} contatos importados da sua agenda!`);
+      loadData(user.uid);
+    }
+  };
+  reader.readAsText(file);
+};
+
+// 📝 FUNÇÃO 2: IMPORTAR TEXTO COLADO (WHATSAPP/NOTAS)
+const handleTextImport = async (rawText) => {
+  const lines = rawText.split('\n');
+  const batch = writeBatch(db);
+  let count = 0;
+
+  lines.forEach(line => {
+    const phone = line.replace(/\D/g, ""); 
+    const name = line.replace(/[0-9()+-]/g, '').trim();
+
+    if (name.length > 2 && phone.length >= 8) {
+      const newRef = doc(collection(db, "clients"));
+      batch.set(newRef, { nome: name, telefone: phone, tenantId: user.uid, createdAt: serverTimestamp() });
+      count++;
+    }
+  });
+
+  if (count > 0) {
+    await batch.commit();
+    alert(`✅ Sucesso! ${count} clientes importados.`);
+    loadData(user.uid);
+  }
+};
   const handleSaveProfile = async () => {
     try {
       if (!user) return;
@@ -1876,21 +1937,40 @@ ${appointments.map(a => {
           }} style={{...btnStyle, background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}dd)`}}>✅ Salvar Cliente</button>
         </section>
 
-            <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
-              <h3 style={{color: primaryColor, marginBottom: "10px"}}>📥 Importar Clientes via CSV</h3>
-              <p style={{fontSize:"12px", color: modernTheme.textLight, marginBottom:"12px", fontWeight: "600"}}>
-                ✅ Formato: Nome,Telefone - Sem limite de contatos!
-              </p>
-              <input 
-                type="file" 
-                accept=".csv"
-                onChange={handleCSVImport}
-                disabled={importingCSV}
-                style={inputStyle}
-              />
-              {importingCSV && <p style={{fontSize:"12px", color: modernTheme.info, fontWeight: "600"}}>⏳ Importando...</p>}
-            </section>
+            <section style={{...cardStyle, boxShadow: modernTheme.shadow, border: `1px dashed ${primaryColor}`}}>
+  <h3 style={{color: primaryColor, marginBottom: "10px", fontSize: "16px"}}>📥 Importação Rápida</h3>
+  
+  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "15px" }}>
+    {/* OPÇÃO ARQUIVO */}
+    <label style={{
+      padding: "12px", backgroundColor: modernTheme.primaryLight, borderRadius: "10px", 
+      textAlign: "center", cursor: "pointer", border: `1px solid ${primaryColor}40`
+    }}>
+      <span style={{fontSize: "20px"}}>📱</span><br/>
+      <small style={{fontWeight: "bold", color: primaryColor}}>Arquivo .VCF<br/>(Agenda do Celular)</small>
+      <input type="file" accept=".vcf" onChange={handleVCFImport} style={{display: "none"}} />
+    </label>
 
+    {/* OPÇÃO TEXTO */}
+    <div 
+      onClick={() => {
+        const txt = prompt("Cole aqui sua lista de nomes e números (Ex: Maria 27999887766):");
+        if (txt) handleTextImport(txt);
+      }}
+      style={{
+        padding: "12px", backgroundColor: "#e8f5e9", borderRadius: "10px", 
+        textAlign: "center", cursor: "pointer", border: "1px solid #4caf5040"
+      }}
+    >
+      <span style={{fontSize: "20px"}}>📝</span><br/>
+      <small style={{fontWeight: "bold", color: "#2e7d32"}}>Colar Lista<br/>(Do WhatsApp)</small>
+    </div>
+  </div>
+
+  <p style={{fontSize: "10px", color: "#999", textAlign: "center", margin: 0}}>
+    Dica: No celular, vá em Contatos > Configurações > Exportar para gerar o arquivo .vcf
+  </p>
+</section>
             <input placeholder="🔍 Buscar..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={inputStyle} />
             <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "15px" }}>
               {alfabeto.map(l => <button key={l} onClick={() => setSelectedLetter(l)} style={btnLetter(selectedLetter === l)}>{l}</button>)}
