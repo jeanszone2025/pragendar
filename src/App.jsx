@@ -2875,4 +2875,6 @@ const btnDel = { backgroundColor: "#ffebee", color: "#f44336", border: "none", p
 const btnWhatsApp = { backgroundColor: "#e8f5e9", color: "#2e7d32", border: "none", padding: "5px", borderRadius: "4px", cursor: "pointer", marginRight: "5px" };
 const btnPay = { backgroundColor: "#fff3e0", color: "#ef6c00", border: "none", padding: "5px", borderRadius: "4px", cursor: "pointer", marginRight: "5px" };
 const btnLetter = (active) => ({ padding: "5px", minWidth: "25px", backgroundColor: active ? "#d81b60" : "#eee", color: active ? "#fff" : "#000", border: "none", borderRadius: "4px", cursor: "pointer" });
-  
+
+
+
