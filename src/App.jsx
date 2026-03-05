@@ -1600,7 +1600,44 @@ ${appointments.map(a => {
                   if (m > 11) { m = 0; y++; }
                   setViewMonth(m); setViewYear(y);
                 }} style={{...btnMini, backgroundColor: "#eee"}}>▶</button>
+              </div
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "5px", textAlign: "center" }}>
+                {["D", "S", "T", "Q", "Q", "S", "S"].map(d => (
+                  <small key={d} style={{ fontWeight: "bold", color: primaryColor, fontSize: "11px" }}>{d}</small>
+                ))}
+                {/* Espaços vazios para alinhar o início do mês */}
+                {Array.from({ length: new Date(viewYear, viewMonth, 1).getDay() }).map((_, i) => <div key={i}></div>)}
+                
+                {/* Dias do mês */}
+                {Array.from({ length: new Date(viewYear, viewMonth + 1, 0).getDate() }).map((_, i) => {
+                  const dia = i + 1;
+                  const dObj = new Date(viewYear, viewMonth, dia);
+                  const isSelected = selectedDate.toDateString() === dObj.toDateString();
+                  const isToday = new Date().toDateString() === dObj.toDateString();
+                  
+                  return (
+                    <div
+                      key={dia}
+                      onClick={() => setSelectedDate(dObj)}
+                      style={{
+                        padding: "8px 0",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        fontSize: "13px",
+                        backgroundColor: isSelected ? primaryColor : "transparent",
+                        color: isSelected ? "#fff" : (isToday ? primaryColor : modernTheme.text),
+                        fontWeight: (isSelected || isToday) ? "bold" : "normal",
+                        border: isToday && !isSelected ? `1px solid ${primaryColor}` : "none",
+                        transition: "all 0.2s"
+                      }}
+                    >
+                      {dia}
+                    </div>
+                  );
+                })}
               </div>
+            </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "5px", textAlign: "center" }}>
                 {["D", "S", "T", "Q", "Q", "S", "S"].map(d => (
