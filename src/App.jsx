@@ -10,7 +10,6 @@ import {
 } from "firebase/auth";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, auth, storage } from "./firebase";
-// 🟢 COLE ISSO AQUI (Aproximadamente linha 15)
 const TEMAS = {
   premium: {
     id: "premium",
@@ -57,7 +56,7 @@ function PaginaAgendamentoCliente({ tenantId }) {
   const [step, setStep] = useState(1); // 1: Serviço, 2: Data/Hora, 3: Confirmação, 4: Pagamento
   const [appointments, setAppointments] = useState([]);
   const [metaClientes, setMetaClientes] = useState(60);
-
+  const [financeDate, setFinanceDate] = useState(new Date().toISOString().split("T")[0]);
   // Procure onde você definiu o modernTheme e substitua por isso:
 const temaId = profile?.themeId || "classic";
 const temaAtual = TEMAS[temaId];
@@ -1762,7 +1761,7 @@ ${appointments.map(a => {
 
       const mesAtual = hoje.getMonth();
       const anoAtual = hoje.getFullYear();
-
+      
       // Filtros de Transações
       const tDia = transactions.filter(t => t && t.data && new Date(t.data).toLocaleDateString("pt-BR") === hojeFmt);
       const tSemana = transactions.filter(t => t && t.data && new Date(t.data) >= inicioSemana);
@@ -1888,35 +1887,52 @@ ${appointments.map(a => {
           </section>
 
           {/* EXTRATO DETALHADO */}
-          <h3 style={{marginTop: "20px", fontSize: "16px"}}>📋 Extrato Recente</h3>
-          {tMes.length === 0 ? (
-            <p style={{textAlign: "center", color: "#999", fontSize: "13px"}}>Nenhuma transação este mês.</p>
-          ) : (
-            tMes.filter(t => t && t.data && t.valor !== undefined)
-                .sort((a,b) => (b.data || "").localeCompare(a.data || ""))
-                .slice(0, 10).map(t => (
-              <div key={t.id} style={{...itemStyle, marginBottom: "8px", backgroundColor: "#fff", borderRadius: "8px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)"}}>
-                <span style={{flex:1}}>
-                  <small style={{color: "#999"}}>{t.data ? new Date(t.data).toLocaleDateString("pt-BR") : "---"}</small><br/>
-                  <strong>{t.descricao || "Sem descrição"}</strong>
-                  <br/>
-                  <small style={{color: "#666", fontSize: "10px"}}>
-                    {t.formaPagamento === "pix" && "📲 Pix"}
-                    {t.formaPagamento === "dinheiro" && "💵 Dinheiro"}
-                    {t.formaPagamento === "cartao" && "💳 Cartão"}
-                  </small>
-                </span>
-                <strong style={{color: t.tipo === "receita" ? modernTheme.success : modernTheme.danger, marginRight: "10px"}}>
-                  {t.tipo === "receita" ? "+" : "-"} R$ {(Number(t.valor) || 0).toFixed(2)}
-                </strong>
-              </div>
-            ))
-          )}
-        </div>
-      );
-    })()}
-  </div>
-)}
+          {/* 🔍 FILTRO DE EXTRATO POR DATA */}
+<div style={{...cardStyle, boxShadow: modernTheme.shadow, marginTop: "20px", borderBottom: `3px solid ${primaryColor}`}}>
+  <h3 style={{fontSize: "16px", color: modernTheme.text, marginBottom: "10px"}}>🔎 Ver Extrato por Dia</h3>
+  <input 
+    type="date" 
+    value={financeDate} 
+    onChange={e => setFinanceDate(e.target.value)} 
+    style={inputStyle} 
+  />
+</div>
+
+<h3 style={{marginTop: "20px", fontSize: "16px"}}>📋 Extrato de {new Date(financeDate).toLocaleDateString("pt-BR")}</h3>
+
+{(() => {
+  // Filtra as transações EXATAMENTE do dia selecionado no input acima
+  const transacoesDoDia = transactions.filter(t => {
+    if (!t.data) return false;
+    return new Date(t.data).toLocaleDateString("pt-BR") === new Date(financeDate).toLocaleDateString("pt-BR");
+  });
+
+  if (transacoesDoDia.length === 0) {
+    return (
+      <div style={{textAlign: "center", padding: "30px", backgroundColor: "#f9f9f9", borderRadius: "10px", color: "#999"}}>
+        📭 Nenhuma movimentação encontrada nesta data.
+      </div>
+    );
+  }
+
+  return transacoesDoDia.sort((a,b) => b.data.localeCompare(a.data)).map(t => (
+    <div key={t.id} style={{...itemStyle, marginBottom: "8px", backgroundColor: "#fff", borderRadius: "8px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)"}}>
+      <span style={{flex:1}}>
+        <small style={{color: "#999"}}>{new Date(t.data).toLocaleTimeString("pt-BR", {hour: '2-digit', minute:'2-digit'})}</small><br/>
+        <strong style={{color: modernTheme.text}}>{t.descricao || "Sem descrição"}</strong>
+        <br/>
+        <small style={{color: "#666", fontSize: "10px"}}>
+          {t.formaPagamento === "pix" && "📲 Pix"}
+          {t.formaPagamento === "dinheiro" && "💵 Dinheiro"}
+          {t.formaPagamento === "cartao" && "💳 Cartão"}
+        </small>
+      </span>
+      <strong style={{color: t.tipo === "receita" ? modernTheme.success : modernTheme.danger, marginRight: "10px"}}>
+        {t.tipo === "receita" ? "+" : "-"} R$ {(Number(t.valor) || 0).toFixed(2)}
+      </strong>
+    </div>
+  ));
+})()}
     {/* === ABA CLIENTES === */}
     {tab === "clientes" && (
       <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
