@@ -1934,7 +1934,7 @@ ${appointments.map(a => {
   ));
 })()}
       </div> 
-    )} 
+    )}) 
    //=== ABA CLIENTES ===
     {tab === "clientes" && (
       <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
