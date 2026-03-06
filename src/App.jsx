@@ -1886,26 +1886,24 @@ ${appointments.map(a => {
             )}
           </section>
 
-          {/* EXTRATO DETALHADO */}
           {/* 🔍 FILTRO DE EXTRATO POR DATA */}
 <div style={{...cardStyle, boxShadow: modernTheme.shadow, marginTop: "20px", borderBottom: `3px solid ${primaryColor}`}}>
   <h3 style={{fontSize: "16px", color: modernTheme.text, marginBottom: "10px"}}>🔎 Ver Extrato por Dia</h3>
   <input 
     type="date" 
-    value={financeDate} 
-    onChange={e => setFinanceDate(e.target.value)} 
+    value={dataManualFin} 
+    onChange={e => setDataManualFin(e.target.value)} 
     style={inputStyle} 
   />
 </div>
 
-<h3 style={{marginTop: "20px", fontSize: "16px"}}>📋 Extrato de {new Date(financeDate).toLocaleDateString("pt-BR")}</h3>
+<h3 style={{marginTop: "20px", fontSize: "16px"}}>📋 Extrato de {new Date(dataManualFin).toLocaleDateString("pt-BR")}</h3>
 
 {(() => {
-  // 1. Filtramos as transações da data selecionada
   const transacoesDoDia = transactions.filter(t => {
     if (!t || !t.data) return false;
     try {
-      return new Date(t.data).toLocaleDateString("pt-BR") === new Date(financeDate).toLocaleDateString("pt-BR");
+      return new Date(t.data).toLocaleDateString("pt-BR") === new Date(dataManualFin).toLocaleDateString("pt-BR");
     } catch (e) { return false; }
   });
 
@@ -1917,7 +1915,6 @@ ${appointments.map(a => {
     );
   }
 
-  // 2. Ordenação Segura (Não trava se data estiver vazia) e Mapeamento
   return transacoesDoDia
     .sort((a, b) => (b.data || "").localeCompare(a.data || ""))
     .map(t => (
@@ -1936,12 +1933,13 @@ ${appointments.map(a => {
           {t.tipo === "receita" ? "+" : "-"} R$ {(Number(t.valor) || 0).toFixed(2)}
         </strong>
       </div>
-    )); // <-- Aqui fecha o .map()
-})()} 
-          </div>
-        );
-      })()}
-    </div>
+    ));
+})()}
+
+        </div>
+      );
+    })()}
+  </div>
 )}
 
 {/* === ABA CLIENTES === */}
