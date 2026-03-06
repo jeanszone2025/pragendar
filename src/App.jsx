@@ -1901,10 +1901,12 @@ ${appointments.map(a => {
 <h3 style={{marginTop: "20px", fontSize: "16px"}}>📋 Extrato de {new Date(financeDate).toLocaleDateString("pt-BR")}</h3>
 
 {(() => {
-  // Filtra as transações EXATAMENTE do dia selecionado no input acima
+  // 1. Filtramos as transações da data selecionada
   const transacoesDoDia = transactions.filter(t => {
-    if (!t.data) return false;
-    return new Date(t.data).toLocaleDateString("pt-BR") === new Date(financeDate).toLocaleDateString("pt-BR");
+    if (!t || !t.data) return false;
+    try {
+      return new Date(t.data).toLocaleDateString("pt-BR") === new Date(financeDate).toLocaleDateString("pt-BR");
+    } catch (e) { return false; }
   });
 
   if (transacoesDoDia.length === 0) {
@@ -1915,31 +1917,35 @@ ${appointments.map(a => {
     );
   }
 
-  return transacoesDoDia.sort((a,b) => b.data.localeCompare(a.data)).map(t => (
-    <div key={t.id} style={{...itemStyle, marginBottom: "8px", backgroundColor: "#fff", borderRadius: "8px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)"}}>
-      <span style={{flex:1}}>
-        <small style={{color: "#999"}}>{new Date(t.data).toLocaleTimeString("pt-BR", {hour: '2-digit', minute:'2-digit'})}</small><br/>
-        <strong style={{color: modernTheme.text}}>{t.descricao || "Sem descrição"}</strong>
-        <br/>
-        <small style={{color: "#666", fontSize: "10px"}}>
-          {t.formaPagamento === "pix" && "📲 Pix"}
-          {t.formaPagamento === "dinheiro" && "💵 Dinheiro"}
-          {t.formaPagamento === "cartao" && "💳 Cartão"}
-        </small>
-      </span>
-      <strong style={{color: t.tipo === "receita" ? modernTheme.success : modernTheme.danger, marginRight: "10px"}}>
-        {t.tipo === "receita" ? "+" : "-"} R$ {(Number(t.valor) || 0).toFixed(2)}
-      </strong>
-    </div>
-      )) 
-    })()}
+  // 2. Ordenação Segura (Não trava se data estiver vazia) e Mapeamento
+  return transacoesDoDia
+    .sort((a, b) => (b.data || "").localeCompare(a.data || ""))
+    .map(t => (
+      <div key={t.id} style={{...itemStyle, marginBottom: "8px", backgroundColor: "#fff", borderRadius: "8px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)"}}>
+        <span style={{flex:1}}>
+          <small style={{color: "#999"}}>{new Date(t.data).toLocaleTimeString("pt-BR", {hour: '2-digit', minute:'2-digit'})}</small><br/>
+          <strong style={{color: modernTheme.text}}>{t.descricao || "Sem descrição"}</strong>
+          <br/>
+          <small style={{color: "#666", fontSize: "10px"}}>
+            {t.formaPagamento === "pix" && "📲 Pix"}
+            {t.formaPagamento === "dinheiro" && "💵 Dinheiro"}
+            {t.formaPagamento === "cartao" && "💳 Cartão"}
+          </small>
+        </span>
+        <strong style={{color: t.tipo === "receita" ? modernTheme.success : modernTheme.danger, marginRight: "10px"}}>
+          {t.tipo === "receita" ? "+" : "-"} R$ {(Number(t.valor) || 0).toFixed(2)}
+        </strong>
+      </div>
+    )); // <-- Aqui fecha o .map()
+})()} 
           </div>
         );
       })()}
     </div>
 )}
 
-    {tab === "clientes" && (
+{/* === ABA CLIENTES === */}
+{tab === "clientes" && (
       <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>>
         <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
           <h3 style={{color: primaryColor, marginBottom: "15px"}}>{editId ? "✏️ Editar" : "👤 Novo"} Cliente</h3>
