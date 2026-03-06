@@ -10,7 +10,6 @@ import {
 } from "firebase/auth";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, auth, storage } from "./firebase";
-// 🟢 COLE ISSO AQUI (Aproximadamente linha 15)
 const TEMAS = {
   premium: {
     id: "premium",
@@ -57,7 +56,7 @@ function PaginaAgendamentoCliente({ tenantId }) {
   const [step, setStep] = useState(1); // 1: Serviço, 2: Data/Hora, 3: Confirmação, 4: Pagamento
   const [appointments, setAppointments] = useState([]);
   const [metaClientes, setMetaClientes] = useState(60);
-
+  const [financeDate, setFinanceDate] = useState(new Date().toISOString().split("T")[0]);
   // Procure onde você definiu o modernTheme e substitua por isso:
 const temaId = profile?.themeId || "classic";
 const temaAtual = TEMAS[temaId];
@@ -909,7 +908,68 @@ async function loadProfile(uid) {
 
     reader.readAsText(file, "UTF-8");
   };
+// 📱 FUNÇÃO 1: IMPORTAR ARQUIVO DA AGENDA (.VCF)
+const handleVCFImport = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
 
+  const reader = new FileReader();
+  reader.onload = async (event) => {
+    const content = event.target.result;
+    const contacts = [];
+    const vcardBlocks = content.split("BEGIN:VCARD");
+
+    vcardBlocks.forEach(block => {
+      // Pega o Nome (FN: ou N:)
+      const nameMatch = block.match(/FN:(.*)|N:(.*);(.*)/);
+      const name = nameMatch ? (nameMatch[1] || nameMatch[2]).replace(/;/g, " ").trim() : "";
+      
+      // Pega o Telefone (TEL:)
+      const telMatch = block.match(/TEL.*:(.*)/);
+      const tel = telMatch ? telMatch[1].replace(/\D/g, "") : "";
+
+      if (name && tel.length >= 8) {
+        contacts.push({ nome: name, telefone: tel });
+      }
+    });
+
+    if (contacts.length > 0) {
+      const batch = writeBatch(db);
+      contacts.forEach(c => {
+        const newRef = doc(collection(db, "clients"));
+        batch.set(newRef, { ...c, tenantId: user.uid, createdAt: serverTimestamp() });
+      });
+      await batch.commit();
+      alert(`✅ Sucesso! ${contacts.length} contatos importados da sua agenda!`);
+      loadData(user.uid);
+    }
+  };
+  reader.readAsText(file);
+};
+
+// 📝 FUNÇÃO 2: IMPORTAR TEXTO COLADO (WHATSAPP/NOTAS)
+const handleTextImport = async (rawText) => {
+  const lines = rawText.split('\n');
+  const batch = writeBatch(db);
+  let count = 0;
+
+  lines.forEach(line => {
+    const phone = line.replace(/\D/g, ""); 
+    const name = line.replace(/[0-9()+-]/g, '').trim();
+
+    if (name.length > 2 && phone.length >= 8) {
+      const newRef = doc(collection(db, "clients"));
+      batch.set(newRef, { nome: name, telefone: phone, tenantId: user.uid, createdAt: serverTimestamp() });
+      count++;
+    }
+  });
+
+  if (count > 0) {
+    await batch.commit();
+    alert(`✅ Sucesso! ${count} clientes importados.`);
+    loadData(user.uid);
+  }
+};
   const handleSaveProfile = async () => {
     try {
       if (!user) return;
@@ -1701,7 +1761,7 @@ ${appointments.map(a => {
 
       const mesAtual = hoje.getMonth();
       const anoAtual = hoje.getFullYear();
-
+      
       // Filtros de Transações
       const tDia = transactions.filter(t => t && t.data && new Date(t.data).toLocaleDateString("pt-BR") === hojeFmt);
       const tSemana = transactions.filter(t => t && t.data && new Date(t.data) >= inicioSemana);
@@ -1826,39 +1886,65 @@ ${appointments.map(a => {
             )}
           </section>
 
-          {/* EXTRATO DETALHADO */}
-          <h3 style={{marginTop: "20px", fontSize: "16px"}}>📋 Extrato Recente</h3>
-          {tMes.length === 0 ? (
-            <p style={{textAlign: "center", color: "#999", fontSize: "13px"}}>Nenhuma transação este mês.</p>
-          ) : (
-            tMes.filter(t => t && t.data && t.valor !== undefined)
-                .sort((a,b) => (b.data || "").localeCompare(a.data || ""))
-                .slice(0, 10).map(t => (
-              <div key={t.id} style={{...itemStyle, marginBottom: "8px", backgroundColor: "#fff", borderRadius: "8px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)"}}>
-                <span style={{flex:1}}>
-                  <small style={{color: "#999"}}>{t.data ? new Date(t.data).toLocaleDateString("pt-BR") : "---"}</small><br/>
-                  <strong>{t.descricao || "Sem descrição"}</strong>
-                  <br/>
-                  <small style={{color: "#666", fontSize: "10px"}}>
-                    {t.formaPagamento === "pix" && "📲 Pix"}
-                    {t.formaPagamento === "dinheiro" && "💵 Dinheiro"}
-                    {t.formaPagamento === "cartao" && "💳 Cartão"}
-                  </small>
-                </span>
-                <strong style={{color: t.tipo === "receita" ? modernTheme.success : modernTheme.danger, marginRight: "10px"}}>
-                  {t.tipo === "receita" ? "+" : "-"} R$ {(Number(t.valor) || 0).toFixed(2)}
-                </strong>
-              </div>
-            ))
-          )}
+          {/* 🔍 FILTRO DE EXTRATO POR DATA */}
+<div style={{...cardStyle, boxShadow: modernTheme.shadow, marginTop: "20px", borderBottom: `3px solid ${primaryColor}`}}>
+  <h3 style={{fontSize: "16px", color: modernTheme.text, marginBottom: "10px"}}>🔎 Ver Extrato por Dia</h3>
+  <input 
+    type="date" 
+    value={dataManualFin} 
+    onChange={e => setDataManualFin(e.target.value)} 
+    style={inputStyle} 
+  />
+</div>
+
+<h3 style={{marginTop: "20px", fontSize: "16px"}}>📋 Extrato de {new Date(dataManualFin).toLocaleDateString("pt-BR")}</h3>
+
+{(() => {
+  const transacoesDoDia = transactions.filter(t => {
+    if (!t || !t.data) return false;
+    try {
+      return new Date(t.data).toLocaleDateString("pt-BR") === new Date(dataManualFin).toLocaleDateString("pt-BR");
+    } catch (e) { return false; }
+  });
+
+  if (transacoesDoDia.length === 0) {
+    return (
+      <div style={{textAlign: "center", padding: "30px", backgroundColor: "#f9f9f9", borderRadius: "10px", color: "#999"}}>
+        📭 Nenhuma movimentação encontrada nesta data.
+      </div>
+    );
+  }
+
+  return transacoesDoDia
+    .sort((a, b) => (b.data || "").localeCompare(a.data || ""))
+    .map(t => (
+      <div key={t.id} style={{...itemStyle, marginBottom: "8px", backgroundColor: "#fff", borderRadius: "8px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)"}}>
+        <span style={{flex:1}}>
+          <small style={{color: "#999"}}>{new Date(t.data).toLocaleTimeString("pt-BR", {hour: '2-digit', minute:'2-digit'})}</small><br/>
+          <strong style={{color: modernTheme.text}}>{t.descricao || "Sem descrição"}</strong>
+          <br/>
+          <small style={{color: "#666", fontSize: "10px"}}>
+            {t.formaPagamento === "pix" && "📲 Pix"}
+            {t.formaPagamento === "dinheiro" && "💵 Dinheiro"}
+            {t.formaPagamento === "cartao" && "💳 Cartão"}
+          </small>
+        </span>
+        <strong style={{color: t.tipo === "receita" ? modernTheme.success : modernTheme.danger, marginRight: "10px"}}>
+          {t.tipo === "receita" ? "+" : "-"} R$ {(Number(t.valor) || 0).toFixed(2)}
+        </strong>
+      </div>
+    ));
+})()}
+
         </div>
       );
     })()}
   </div>
 )}
-    {/* === ABA CLIENTES === */}
-    {tab === "clientes" && (
-      <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
+
+{/* === ABA CLIENTES === */}
+{tab === "clientes" && (
+      <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>>
         <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
           <h3 style={{color: primaryColor, marginBottom: "15px"}}>{editId ? "✏️ Editar" : "👤 Novo"} Cliente</h3>
           <input placeholder="👤 Nome Completo" value={nomeCliente} onChange={e => setNomeCliente(e.target.value)} style={inputStyle} />
@@ -1876,21 +1962,40 @@ ${appointments.map(a => {
           }} style={{...btnStyle, background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}dd)`}}>✅ Salvar Cliente</button>
         </section>
 
-            <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
-              <h3 style={{color: primaryColor, marginBottom: "10px"}}>📥 Importar Clientes via CSV</h3>
-              <p style={{fontSize:"12px", color: modernTheme.textLight, marginBottom:"12px", fontWeight: "600"}}>
-                ✅ Formato: Nome,Telefone - Sem limite de contatos!
-              </p>
-              <input 
-                type="file" 
-                accept=".csv"
-                onChange={handleCSVImport}
-                disabled={importingCSV}
-                style={inputStyle}
-              />
-              {importingCSV && <p style={{fontSize:"12px", color: modernTheme.info, fontWeight: "600"}}>⏳ Importando...</p>}
-            </section>
+            <section style={{...cardStyle, boxShadow: modernTheme.shadow, border: `1px dashed ${primaryColor}`}}>
+  <h3 style={{color: primaryColor, marginBottom: "10px", fontSize: "16px"}}>📥 Importação Rápida</h3>
+  
+  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "15px" }}>
+    {/* OPÇÃO ARQUIVO */}
+    <label style={{
+      padding: "12px", backgroundColor: modernTheme.primaryLight, borderRadius: "10px", 
+      textAlign: "center", cursor: "pointer", border: `1px solid ${primaryColor}40`
+    }}>
+      <span style={{fontSize: "20px"}}>📱</span><br/>
+      <small style={{fontWeight: "bold", color: primaryColor}}>Arquivo .VCF<br/>(Agenda do Celular)</small>
+      <input type="file" accept=".vcf" onChange={handleVCFImport} style={{display: "none"}} />
+    </label>
 
+    {/* OPÇÃO TEXTO */}
+    <div 
+      onClick={() => {
+        const txt = prompt("Cole aqui sua lista de nomes e números (Ex: Maria 27999887766):");
+        if (txt) handleTextImport(txt);
+      }}
+      style={{
+        padding: "12px", backgroundColor: "#e8f5e9", borderRadius: "10px", 
+        textAlign: "center", cursor: "pointer", border: "1px solid #4caf5040"
+      }}
+    >
+      <span style={{fontSize: "20px"}}>📝</span><br/>
+      <small style={{fontWeight: "bold", color: "#2e7d32"}}>Colar Lista<br/>(Do WhatsApp)</small>
+    </div>
+  </div>
+
+  <p style={{fontSize: "10px", color: "#999", textAlign: "center", margin: 0}}>
+    Dica: No celular, vá em Contatos > Configurações > Exportar para gerar o arquivo .vcf
+  </p>
+</section>
             <input placeholder="🔍 Buscar..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={inputStyle} />
             <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "15px" }}>
               {alfabeto.map(l => <button key={l} onClick={() => setSelectedLetter(l)} style={btnLetter(selectedLetter === l)}>{l}</button>)}
