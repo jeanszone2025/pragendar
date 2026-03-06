@@ -1933,9 +1933,9 @@ ${appointments.map(a => {
     </div>
   ));
 })()}
-      </div> // 🟢 FECHA A DIV DA ANIMAÇÃO DO FINANCEIRO
-    )} // 🟢 FECHA O PARÊNTESES DA ABA FINANCEIR
-    {/* === ABA CLIENTES === */}
+      </div> 
+    )} 
+   //=== ABA CLIENTES ===
     {tab === "clientes" && (
       <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
         <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
