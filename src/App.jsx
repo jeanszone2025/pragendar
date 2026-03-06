@@ -1897,20 +1897,28 @@ ${appointments.map(a => {
   />
 </div>
 
-<h3 style={{marginTop: "20px", fontSize: "16px"}}>📋 Extrato de {new Date(dataManualFin).toLocaleDateString("pt-BR")}</h3>
+<h3 style={{marginTop: "20px", fontSize: "16px"}}>
+  📋 Extrato de {(() => {
+    // Adicionamos 'T12:00:00' para garantir que o JS leia o dia correto no Brasil
+    return new Date(dataManualFin + 'T12:00:00').toLocaleDateString("pt-BR");
+  })()}
+</h3>
 
 {(() => {
-  const transacoesDoDia = transactions.filter(t => {
+  const transSeguras = transactions || [];
+  
+  // Filtro inteligente: compara apenas o texto "AAAA-MM-DD"
+  const transacoesDoDia = transSeguras.filter(t => {
     if (!t || !t.data) return false;
-    try {
-      return new Date(t.data).toLocaleDateString("pt-BR") === new Date(dataManualFin).toLocaleDateString("pt-BR");
-    } catch (e) { return false; }
+    // Pega os primeiros 10 caracteres da data do banco (ex: 2026-03-05)
+    const dataNoBanco = t.data.split('T')[0]; 
+    return dataNoBanco === dataManualFin;
   });
 
   if (transacoesDoDia.length === 0) {
     return (
       <div style={{textAlign: "center", padding: "30px", backgroundColor: "#f9f9f9", borderRadius: "10px", color: "#999"}}>
-        📭 Nenhuma movimentação encontrada nesta data.
+        📭 Nenhuma movimentação encontrada para este dia.
       </div>
     );
   }
@@ -1920,14 +1928,10 @@ ${appointments.map(a => {
     .map(t => (
       <div key={t.id} style={{...itemStyle, marginBottom: "8px", backgroundColor: "#fff", borderRadius: "8px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)"}}>
         <span style={{flex:1}}>
-          <small style={{color: "#999"}}>{new Date(t.data).toLocaleTimeString("pt-BR", {hour: '2-digit', minute:'2-digit'})}</small><br/>
+          <small style={{color: "#999"}}>
+            {new Date(t.data).toLocaleTimeString("pt-BR", {hour: '2-digit', minute:'2-digit'})}
+          </small><br/>
           <strong style={{color: modernTheme.text}}>{t.descricao || "Sem descrição"}</strong>
-          <br/>
-          <small style={{color: "#666", fontSize: "10px"}}>
-            {t.formaPagamento === "pix" && "📲 Pix"}
-            {t.formaPagamento === "dinheiro" && "💵 Dinheiro"}
-            {t.formaPagamento === "cartao" && "💳 Cartão"}
-          </small>
         </span>
         <strong style={{color: t.tipo === "receita" ? modernTheme.success : modernTheme.danger, marginRight: "10px"}}>
           {t.tipo === "receita" ? "+" : "-"} R$ {(Number(t.valor) || 0).toFixed(2)}
