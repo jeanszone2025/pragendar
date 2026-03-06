@@ -1932,14 +1932,12 @@ ${appointments.map(a => {
       </strong>
     </div>
   ));
-  })()} 
+  })()}
+      </div>
+    )}
 
-  </div> {/* 👈 VOCÊ PRECISA DESSA DIV AQUI PARA FECHAR A ANIMAÇÃO */}
-)} {/* 👈 E DESSE ) PARA FECHAR O BLOCO DA TAB FINANCEIRO */}
-
-{/* === ABA CLIENTES === */}
-{tab === "clientes" && (
-  <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
+    {tab === "clientes" && (
+      <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>>
         <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
           <h3 style={{color: primaryColor, marginBottom: "15px"}}>{editId ? "✏️ Editar" : "👤 Novo"} Cliente</h3>
           <input placeholder="👤 Nome Completo" value={nomeCliente} onChange={e => setNomeCliente(e.target.value)} style={inputStyle} />
