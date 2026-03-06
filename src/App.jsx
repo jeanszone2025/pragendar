@@ -1931,7 +1931,8 @@ ${appointments.map(a => {
         {t.tipo === "receita" ? "+" : "-"} R$ {(Number(t.valor) || 0).toFixed(2)}
       </strong>
     </div>
-  })()}
+      )) 
+    })()}
           </div>
         );
       })()}
