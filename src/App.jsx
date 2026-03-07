@@ -576,6 +576,7 @@ const modernTheme = {
 
 // ========== COMPONENTE PRINCIPAL: APP DA PROFISSIONAL ==========
   const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_KEY || "AI_KEY_TESTE");
+  console.log("CHAVE CARREGADA:", import.meta.env.VITE_GEMINI_KEY ? "SIM ✅" : "NÃO ❌");
 export default function App() {
   // 1. Verificação de Roteamento para Clientes (SaaS)
   const urlParams = new URLSearchParams(window.location.search);
@@ -1285,37 +1286,110 @@ ${appointments.map(a => {
     win.document.close();
   };
   const askAI = async (pergunta) => {
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const modelosParaTentar = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
+  let sucesso = false;
 
-  // 1. Criamos um "Resumo" do que está acontecendo no salão para a IA ler
-  const dadosDoSalao = `
-    Contexto do Salão ${nomeEmpresa}:
-    - Clientes cadastrados: ${clients.length}
-    - Serviços: ${services.map(s => s.nome + " (R$" + s.preco + ")").join(", ")}
-    - Agendamentos hoje: ${appointments.filter(a => new Date(a.dataHora).toLocaleDateString() === new Date().toLocaleDateString()).length}
-    - Faturamento total do mês: R$ ${getChartData().total}
-    - Produtos em nível crítico: ${inventory.filter(p => Number(p.quantidade) <= Number(p.alertaCritico)).map(p => p.nome).join(", ")}
+  const nomeParaExibir = nomeEmpresa || "Profissional";
+  
+  // 1. TURBINANDO O CONTEXTO: Agora ela vê TUDO
+  const contexto = {
+    usuarioAtual: nomeParaExibir,
+    dataHoje: new Date().toLocaleDateString("pt-BR"),
+    resumoSistema: {
+      totalClientes: clients.length,
+      totalServicos: services.length,
+      itensEstoqueBaixo: inventory.filter(i => i.quantidade <= i.alertaCritico).length,
+      faturamentoMes: transactions.filter(t => t.tipo === "receita").reduce((acc, t) => acc + t.valor, 0)
+    },
+    clientes: clients.map(c => ({ id: c.id, nome: c.nome, telefone: c.telefone })),
+    servicos: services.map(s => ({ id: s.id, nome: s.nome, preco: s.preco, duracao: s.duracao })),
+    agendaHoje: appointments.filter(a => new Date(a.dataHora).toLocaleDateString("pt-BR") === new Date().toLocaleDateString("pt-BR"))
+      .map(a => ({ id: a.id, hora: new Date(a.dataHora).getHours() + ":00", cliente: getNome(clients, a.clientId) || a.clientName, servico: getNome(services, a.serviceId), status: a.status })),
+    estoque: inventory.map(i => ({ id: i.id, nome: i.nome, qtd: i.quantidade }))
+  };
+
+  const promptIA = `
+    Você é a Secretária Executiva de Elite do Pragendar. 
+    VOCÊ TEM PODER TOTAL DE EXECUÇÃO.
+
+    DADOS ATUAIS DO SISTEMA: ${JSON.stringify(contexto)}
+
+    SUAS DIRETRIZES:
+    1. ANALISE: Use os dados acima para responder. Se falarem "Caixa", olhe faturamentoMes. Se falarem "Hoje", olhe agendaHoje.
+    2. AÇÃO: Se o usuário pedir para criar, editar ou apagar, gere o JSON.
+    3. SEGURANÇA: Para APAGAR, peça confirmação em texto primeiro. Para CRIAR ou EDITAR, pode mandar o JSON direto se tiver os dados.
+    4. FORMATO DE COMANDO: Retorne APENAS o JSON no formato: {"acao": "NOME_ACAO", "dados": {...}}
+
+    AÇÕES DISPONÍVEIS:
+    - CREATE_APPOINTMENT, UPDATE_APPOINTMENT, DELETE_APPOINTMENT
+    - CREATE_SERVICE, UPDATE_SERVICE, DELETE_SERVICE
+    - CREATE_CLIENT, UPDATE_CLIENT, DELETE_CLIENT
+    - ADD_TRANSACTION (para o financeiro)
+
+    PEDIDO: "${pergunta}"
   `;
 
+  for (const modeloNome of modelosParaTentar) {
+    if (sucesso) break; 
+    try {
+      const model = genAI.getGenerativeModel({ model: modeloNome }); 
+      const result = await model.generateContent(promptIA);
+      const respostaIA = result.response.text();
+
+      if (respostaIA.includes("{")) {
+        const jsonLimpo = respostaIA.match(/\{.*\}/s)[0];
+        const comando = JSON.parse(jsonLimpo);
+        await executarComandoIA(comando);
+      } else {
+        setAiResponse(respostaIA);
+      }
+      sucesso = true; 
+    } catch (err) { console.warn(`Falha no ${modeloNome}`, err.message); }
+  }
+};
+  const executarComandoIA = async (comando) => {
+  const { acao, dados } = comando;
   try {
-    // 2. O Gemini lê os dados e responde a pergunta da Cris
-    const prompt = `Você é a Gerente Virtual do salão da Cris. 
-    Use os dados abaixo para responder a pergunta de forma curta e amigável.
-    
-    ${dadosDoSalao}
-    
-    Pergunta da Cris: "${pergunta}"`;
+    switch (acao) {
+      // --- AGENDAMENTOS ---
+      case "CREATE_APPOINTMENT":
+        await addDoc(collection(db, "appointments"), { ...dados, status: "pendente", tenantId: user.uid, createdAt: serverTimestamp() });
+        setAiResponse("✅ Horário agendado com sucesso!");
+        break;
+      
+      case "UPDATE_APPOINTMENT":
+        await updateDoc(doc(db, "appointments", dados.id), { ...dados });
+        setAiResponse("✅ Agendamento atualizado!");
+        break;
 
-    const result = await model.generateContent(prompt);
-    const respostaIA = result.response.text();
+      // --- SERVIÇOS ---
+      case "CREATE_SERVICE":
+        await addDoc(collection(db, "services"), { ...dados, preco: Number(dados.preco), duracao: Number(dados.duracao), tenantId: user.uid });
+        setAiResponse("✅ Novo serviço adicionado ao catálogo!");
+        break;
 
-    setAiChatHistory([...aiChatHistory, { pergunta, resposta: respostaIA, timestamp: new Date() }]);
-    setAiResponse(respostaIA);
-    return respostaIA;
+      // --- CLIENTES ---
+      case "CREATE_CLIENT":
+        await addDoc(collection(db, "clients"), { ...dados, tenantId: user.uid, createdAt: serverTimestamp() });
+        setAiResponse(`✅ Cliente ${dados.nome} cadastrado!`);
+        break;
 
-  } catch (error) {
-    console.error("Erro na IA:", error);
-    return "Ops, tive um pequeno curto-circuito. Pode perguntar de novo?";
+      // --- FINANCEIRO ---
+      case "ADD_TRANSACTION":
+        await addDoc(collection(db, "transactions"), { ...dados, valor: Number(dados.valor), data: new Date().toISOString(), tenantId: user.uid });
+        setAiResponse("💰 Lançamento financeiro realizado!");
+        break;
+
+      // --- DELEÇÕES ---
+      case "DELETE_CLIENT":
+        await deleteDoc(doc(db, "clients", dados.id));
+        setAiResponse("🗑️ Registro excluído permanentemente.");
+        break;
+      // ... adicione os outros DELETE_SERVICE e DELETE_APPOINTMENT aqui
+    }
+    loadData(user.uid); 
+  } catch (e) {
+    setAiResponse("❌ Erro ao processar comando: " + e.message);
   }
 };
 
@@ -1328,11 +1402,19 @@ ${appointments.map(a => {
       reader.readAsDataURL(file);
     });
 
-    const prompt = `Analise esta foto de uma agenda de papel. 
-      Extraia: Nome da Cliente, Serviço e Horário. 
-      Retorne APENAS um JSON no formato: 
-      [{"nome": "Maria", "servico": "Corte", "hora": 14, "data": "2026-03-01"}] 
-      Se não entender algo, ignore. Use a data de hoje como padrão se não houver data.`;
+    // Dentro de processAgendaImage...
+const prompt = `Você é um scanner de agenda experiente. 
+Analise a imagem enviada e extraia todos os agendamentos que encontrar.
+
+REGRAS:
+1. Retorne APENAS um JSON puro, sem textos explicativos.
+2. Siga este formato: [{"nome": "Cliente", "data": "YYYY-MM-DD", "hora": 10}]
+
+DADOS ATUAIS DO SISTEMA:
+- Usuário logado: ${nomeEmpresa || "Profissional"}
+- Data de hoje: ${new Date().toLocaleDateString("pt-BR")}
+
+Por favor, processe a imagem agora.`; // SÓ AQUI fecha a crase e o ponto e vírgula!
 
     try {
       const result = await model.generateContent([
@@ -1955,7 +2037,7 @@ ${appointments.map(a => {
 
 {/* === ABA CLIENTES === */}
 {tab === "clientes" && (
-      <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>>
+      <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
         <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
           <h3 style={{color: primaryColor, marginBottom: "15px"}}>{editId ? "✏️ Editar" : "👤 Novo"} Cliente</h3>
           <input placeholder="👤 Nome Completo" value={nomeCliente} onChange={e => setNomeCliente(e.target.value)} style={inputStyle} />
@@ -2022,7 +2104,7 @@ ${appointments.map(a => {
 </div>
 
   <p style={{fontSize: "10px", color: "#999", textAlign: "center", margin: 0}}>
-    Dica: No celular, vá em Contatos > Configurações > Exportar para gerar o arquivo .vcf
+    Dica: No celular, vá em Contatos &gt; Configurações &gt; Exportar para gerar o arquivo .vcf
   </p>
 </section>
             <input placeholder="🔍 Buscar..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={inputStyle} />
@@ -2800,36 +2882,72 @@ ${appointments.map(a => {
           }}
         />
 
-  {/* SUGESTÕES RÁPIDAS */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
-              {[
-                { icon: "📅", texto: "Hoje", query: "Meus horários hoje" },
-                { icon: "💰", texto: "Caixa", query: "Meu financeiro" },
-                { icon: "👥", texto: "Clientes", query: "Quantos clientes tenho" },
-                { icon: "🔄", texto: "Ausentes", query: "Clientes sumidas" }
-              ].map((btn, i) => (
-                <button
-                  key={i}
-                  onClick={() => {
-                    askAI(btn.query);
-                    setAiQuery("");
-                  }}
-                  style={{
-                    padding: "8px",
-                    backgroundColor: modernTheme.primaryLight,
-                    border: `1px solid ${primaryColor}40`,
-                    borderRadius: modernTheme.radiusTiny,
-                    cursor: "pointer",
-                    fontSize: "11px",
-                    fontWeight: "600",
-                    color: modernTheme.text,
-                    transition: "all 0.2s ease"
-                  }}
-                >
-                  {btn.icon} {btn.texto}
-                </button>
-              ))}
-            </div>
+
+{/* SUGESTÕES RÁPIDAS - Versão Corrigida */}
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+  {[
+    { icon: "📅", texto: "Hoje", query: "Me dê o resumo da agenda de hoje" },
+    { icon: "💰", texto: "Caixa", query: "Como está o meu faturamento e caixa este mês?" },
+    { icon: "👥", texto: "Clientes", query: "Quantos clientes eu tenho e qual o perfil deles?" },
+    { icon: "🔄", texto: "Ausentes", query: "Quais clientes não aparecem há mais de 30 dias?" }
+  ].map((item, i) => (
+    <button
+      key={i}
+      onClick={() => {
+        setAiResponse("🤖 Analisando...");
+        askAI(item.query);
+      }}
+      style={{
+        padding: "8px",
+        backgroundColor: modernTheme.primaryLight,
+        border: `1px solid ${primaryColor}40`,
+        borderRadius: modernTheme.radiusTiny,
+        cursor: "pointer",
+        fontSize: "11px",
+        fontWeight: "600",
+        color: modernTheme.text,
+        transition: "all 0.2s ease"
+      }}
+    >
+      {item.icon} {item.texto}
+    </button>
+  ))}
+</div>
+          
+          <style dangerouslySetInnerHTML={{ __html: `
+            @keyframes slideInRight {
+              from { transform: translateX(100%); opacity: 0; }
+              to { transform: translateX(0); opacity: 1; }
+            }
+          ` }} />
+        </div>
+      )}
+
+      {/* ========== 1. SUGESTÕES RÁPIDAS (CORRIGIDO) ========== */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", padding: "0 15px 15px" }}>
+            {[
+              { texto: "Hoje", icon: "📅", query: "Resumo da agenda de hoje" },
+              { texto: "Caixa", icon: "💰", query: "Resumo do financeiro" },
+              { texto: "Clientes", icon: "👥", query: "Resumo dos clientes" },
+              { texto: "Ausentes", icon: "🔄", query: "Clientes ausentes" }
+            ].map((item, i) => (
+              <button
+                key={i}
+                onClick={() => askAI(item.query)}
+                style={{
+                  padding: "8px",
+                  backgroundColor: modernTheme.primaryLight,
+                  border: `1px solid ${primaryColor}40`,
+                  borderRadius: modernTheme.radiusTiny,
+                  cursor: "pointer",
+                  fontSize: "11px",
+                  fontWeight: "600",
+                  color: modernTheme.text
+                }}
+              >
+                {item.icon} {item.texto}
+              </button>
+            ))}
           </div>
           
           <style dangerouslySetInnerHTML={{ __html: `
@@ -2841,7 +2959,7 @@ ${appointments.map(a => {
         </div>
       )}
 
-      {/* ========== MODAL DE AGENDAMENTO (VERSÃO COMPLETA) ========== */}
+      {/* ========== 2. MODAL DE AGENDAMENTO ========== */}
       {showModal && (
         <div style={modalOverlay}>
           <div style={{...modalContent, borderTop: `4px solid ${primaryColor}`, maxWidth: "400px"}}>
@@ -2878,53 +2996,32 @@ ${appointments.map(a => {
             </select>
 
             <div style={{ marginTop: "20px", display: "flex", flexDirection: "column", gap: "10px" }}>
-              <button 
-                onClick={handleSaveAppointment} 
-                style={{...btnStyle, backgroundColor: modernTheme.success}}
-              >
+              <button onClick={handleSaveAppointment} style={{...btnStyle, backgroundColor: modernTheme.success}}>
                 {editAppId ? "💾 Salvar Alterações" : "✅ Confirmar Agendamento"}
               </button>
-
-              <button 
-                onClick={() => setShowModal(false)} 
-                style={{...btnStyle, backgroundColor: "#ccc"}}
-              >
-                Cancelar
-              </button>
+              <button onClick={() => setShowModal(false)} style={{...btnStyle, backgroundColor: "#ccc"}}>Cancelar</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 🟢 O MODAL DE PAGAMENTO ENTRA AQUI (DENTRO DA DIV PRINCIPAL) */}
+      {/* ========== 3. MODAL DE PAGAMENTO ========== */}
       {showPaymentModal && selectedAppForPayment && (
         <div style={modalOverlay}>
           <div style={{...modalContent, borderTop: `4px solid ${modernTheme.success}`}}>
             <h3 style={{color: modernTheme.success}}>💰 Confirmar Pagamento</h3>
             <p style={{fontSize: "14px", color: modernTheme.text}}>
-              Deseja confirmar o recebimento do pagamento de <strong>{getNome(clients, selectedAppForPayment.clientId)}</strong>?
+              Deseja confirmar o recebimento de <strong>{getNome(clients, selectedAppForPayment.clientId)}</strong>?
             </p>
-            <div style={{padding: "10px", backgroundColor: "#f9f9f9", borderRadius: "8px", marginBottom: "15px"}}>
-              <small>Serviço: {getNome(services, selectedAppForPayment.serviceId)}</small><br/>
-              <strong>Valor: R$ {services.find(s => s.id === selectedAppForPayment.serviceId)?.preco.toFixed(2)}</strong>
-            </div>
-            
-            <label style={labelStyle}>Forma de Recebimento:</label>
-            <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} style={inputStyle}>
-              <option value="pix">📲 Pix</option>
-              <option value="dinheiro">💵 Dinheiro</option>
-              <option value="cartao">💳 Cartão</option>
-            </select>
-
-            <button onClick={confirmPayment} style={{...btnStyle, backgroundColor: modernTheme.success}}>✅ Confirmar e Salvar no Caixa</button>
+            <button onClick={confirmPayment} style={{...btnStyle, backgroundColor: modernTheme.success}}>✅ Confirmar</button>
             <button onClick={() => setShowPaymentModal(false)} style={{...btnStyle, backgroundColor: "#ccc", marginTop: "10px"}}>Cancelar</button>
           </div>
         </div>
       )}
 
-    </div> // ⬅️ Penúltima chave (fecha a div principal)
-  ); // ⬅️ Fecha o return
-} // ⬅️ ÚLTIMA CHAVE (fecha a função App)
+    </div> // Fim da div principal
+  ); // Fim do return
+} // Fim do App
 
 // ========== ESTILOS E AUXILIARES (FORA DO APP) ==========
 // Seus estilos começam logo abaixo daqui...
