@@ -1339,7 +1339,7 @@ ${appointments.map(a => {
     }
   } catch (error) {
     console.error("Erro na IA:", error);
-    setAiResponse("Ops, tive um problema ao conectar com meu cérebro. Verifique a chave VITE_GEMINI_KEY no Render.");
+    setAiResponse("Erro Real: " + error.message);
   }
 };
   const executarComandoIA = async (comando) => {
