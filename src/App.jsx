@@ -1287,7 +1287,7 @@ ${appointments.map(a => {
   };
   const askAI = async (pergunta) => {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const modelosParaTentar = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
 
     // Criamos a variável que faltava para não dar erro
     const nomeParaExibir = nomeEmpresa || "Profissional";
