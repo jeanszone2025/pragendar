@@ -2923,7 +2923,43 @@ Por favor, processe a imagem agora.`; // SÓ AQUI fecha a crase e o ponto e vír
         </div>
       )}
 
-      {/* ========== MODAL DE AGENDAMENTO (VERSÃO COMPLETA) ========== */}
+      {/* ========== 1. SUGESTÕES RÁPIDAS (CORRIGIDO) ========== */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", padding: "0 15px 15px" }}>
+            {[
+              { texto: "Hoje", icon: "📅", query: "Resumo da agenda de hoje" },
+              { texto: "Caixa", icon: "💰", query: "Resumo do financeiro" },
+              { texto: "Clientes", icon: "👥", query: "Resumo dos clientes" },
+              { texto: "Ausentes", icon: "🔄", query: "Clientes ausentes" }
+            ].map((item, i) => (
+              <button
+                key={i}
+                onClick={() => askAI(item.query)}
+                style={{
+                  padding: "8px",
+                  backgroundColor: modernTheme.primaryLight,
+                  border: `1px solid ${primaryColor}40`,
+                  borderRadius: modernTheme.radiusTiny,
+                  cursor: "pointer",
+                  fontSize: "11px",
+                  fontWeight: "600",
+                  color: modernTheme.text
+                }}
+              >
+                {item.icon} {item.texto}
+              </button>
+            ))}
+          </div>
+          
+          <style dangerouslySetInnerHTML={{ __html: `
+            @keyframes slideInRight {
+              from { transform: translateX(100%); opacity: 0; }
+              to { transform: translateX(0); opacity: 1; }
+            }
+          ` }} />
+        </div>
+      )}
+
+      {/* ========== 2. MODAL DE AGENDAMENTO ========== */}
       {showModal && (
         <div style={modalOverlay}>
           <div style={{...modalContent, borderTop: `4px solid ${primaryColor}`, maxWidth: "400px"}}>
@@ -2960,53 +2996,32 @@ Por favor, processe a imagem agora.`; // SÓ AQUI fecha a crase e o ponto e vír
             </select>
 
             <div style={{ marginTop: "20px", display: "flex", flexDirection: "column", gap: "10px" }}>
-              <button 
-                onClick={handleSaveAppointment} 
-                style={{...btnStyle, backgroundColor: modernTheme.success}}
-              >
+              <button onClick={handleSaveAppointment} style={{...btnStyle, backgroundColor: modernTheme.success}}>
                 {editAppId ? "💾 Salvar Alterações" : "✅ Confirmar Agendamento"}
               </button>
-
-              <button 
-                onClick={() => setShowModal(false)} 
-                style={{...btnStyle, backgroundColor: "#ccc"}}
-              >
-                Cancelar
-              </button>
+              <button onClick={() => setShowModal(false)} style={{...btnStyle, backgroundColor: "#ccc"}}>Cancelar</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 🟢 O MODAL DE PAGAMENTO ENTRA AQUI (DENTRO DA DIV PRINCIPAL) */}
+      {/* ========== 3. MODAL DE PAGAMENTO ========== */}
       {showPaymentModal && selectedAppForPayment && (
         <div style={modalOverlay}>
           <div style={{...modalContent, borderTop: `4px solid ${modernTheme.success}`}}>
             <h3 style={{color: modernTheme.success}}>💰 Confirmar Pagamento</h3>
             <p style={{fontSize: "14px", color: modernTheme.text}}>
-              Deseja confirmar o recebimento do pagamento de <strong>{getNome(clients, selectedAppForPayment.clientId)}</strong>?
+              Deseja confirmar o recebimento de <strong>{getNome(clients, selectedAppForPayment.clientId)}</strong>?
             </p>
-            <div style={{padding: "10px", backgroundColor: "#f9f9f9", borderRadius: "8px", marginBottom: "15px"}}>
-              <small>Serviço: {getNome(services, selectedAppForPayment.serviceId)}</small><br/>
-              <strong>Valor: R$ {services.find(s => s.id === selectedAppForPayment.serviceId)?.preco.toFixed(2)}</strong>
-            </div>
-            
-            <label style={labelStyle}>Forma de Recebimento:</label>
-            <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} style={inputStyle}>
-              <option value="pix">📲 Pix</option>
-              <option value="dinheiro">💵 Dinheiro</option>
-              <option value="cartao">💳 Cartão</option>
-            </select>
-
-            <button onClick={confirmPayment} style={{...btnStyle, backgroundColor: modernTheme.success}}>✅ Confirmar e Salvar no Caixa</button>
+            <button onClick={confirmPayment} style={{...btnStyle, backgroundColor: modernTheme.success}}>✅ Confirmar</button>
             <button onClick={() => setShowPaymentModal(false)} style={{...btnStyle, backgroundColor: "#ccc", marginTop: "10px"}}>Cancelar</button>
           </div>
         </div>
       )}
 
-    </div> // ⬅️ Penúltima chave (fecha a div principal)
-  ); // ⬅️ Fecha o return
-} // ⬅️ ÚLTIMA CHAVE (fecha a função App)
+    </div> // Fim da div principal
+  ); // Fim do return
+} // Fim do App
 
 // ========== ESTILOS E AUXILIARES (FORA DO APP) ==========
 // Seus estilos começam logo abaixo daqui...
