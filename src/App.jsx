@@ -1296,8 +1296,7 @@ ${appointments.map(a => {
     horaAgora: new Date().toLocaleTimeString()
   };
 
-  const prompt = `
-     `Você é a Secretária Executiva do sistema Pragendar. 
+  const prompt =  'Você é a Secretária Executiva do sistema Pragendar. 
     Você está conversando com: ${contexto.usuarioAtual}.
       REGRAS DE SEGURANÇA:
     1. Se o usuário pedir para APAGAR, EXCLUIR ou DELETAR algo (cliente, serviço ou agendamento):
