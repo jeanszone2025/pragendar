@@ -1285,54 +1285,60 @@ ${appointments.map(a => {
     win.document.close();
   };
   const askAI = async (pergunta) => {
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-  // 1. Preparamos o "Mapa" para a IA não se perder
-  const contexto = {
-    usuarioAtual: nomeParaExibir,
-    clientes: clients.map(c => ({ id: c.id, nome: c.nome, telefone: c.telefone })),
-    servicos: services.map(s => ({ id: s.id, nome: s.nome, preco: s.preco, duracao: s.duracao })),
-    dataHoje: new Date().toISOString().split('T')[0],
-    horaAgora: new Date().toLocaleTimeString()
-  };
-
-  const prompt = `
-  Você é a Secretária Executiva do sistema Pragendar. 
-  Você está conversando com: ${contexto.usuarioAtual}.
-
-  REGRAS DE SEGURANÇA:
-  1. Se o usuário pedir para APAGAR, EXCLUIR ou DELETAR algo (cliente, serviço ou agendamento):
-     - NÃO envie o comando JSON na primeira vez.
-     - Responda apenas em texto: "⚠️ ${contexto.usuarioAtual}, você tem certeza que deseja apagar [NOME DO ITEM]? Digite 'SIM, PODE APAGAR' para confirmar."
-  
-  2. SÓ envie o comando JSON de deleção (ex: DELETE_CLIENT) se o usuário confirmar que deseja prosseguir.
-
-  FORMATOS DE COMANDO (Retorne APENAS o JSON se houver confirmação):
-  {"acao": "CREATE_APPOINTMENT", "dados": {...}}
-  {"acao": "CREATE_SERVICE", "dados": {...}}
-  {"acao": "DELETE_CLIENT", "dados": {"id": "ID_AQUI"}}
-  {"acao": "DELETE_SERVICE", "dados": {"id": "ID_AQUI"}}
-  {"acao": "DELETE_APPOINTMENT", "dados": {"id": "ID_AQUI"}}
-
-  PEDIDO DO USUÁRIO: "${pergunta}"
-`;
   try {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    // Criamos a variável que faltava para não dar erro
+    const nomeParaExibir = nomeEmpresa || "Profissional";
+
+    // 1. Preparamos o "Mapa" com dados reais para a IA
+    const contexto = {
+      usuarioAtual: nomeParaExibir,
+      clientes: clients.map(c => ({ id: c.id, nome: c.nome, telefone: c.telefone })),
+      servicos: services.map(s => ({ id: s.id, nome: s.nome, preco: s.preco, duracao: s.duracao })),
+      dataHoje: new Date().toLocaleDateString("pt-BR"),
+      horaAgora: new Date().toLocaleTimeString("pt-BR")
+    };
+
+    const prompt = `
+      Você é a Secretária Executiva do sistema Pragendar. 
+      Você está conversando com: ${contexto.usuarioAtual}.
+
+      REGRAS DE SEGURANÇA:
+      1. Se o usuário pedir para APAGAR, EXCLUIR ou DELETAR algo:
+         - NÃO envie o comando JSON na primeira vez.
+         - Responda apenas em texto perguntando se ${contexto.usuarioAtual} tem certeza.
+      
+      2. SÓ envie o comando JSON de deleção se o usuário confirmar.
+
+      FORMATOS DE COMANDO (Retorne APENAS o JSON se houver confirmação ou ordem direta de criação):
+      {"acao": "CREATE_APPOINTMENT", "dados": {"clientId": "ID", "serviceId": "ID", "dataHora": "ISO_DATE"}}
+      {"acao": "CREATE_SERVICE", "dados": {"nome": "NOME", "preco": 0, "duracao": 0}}
+      {"acao": "DELETE_CLIENT", "dados": {"id": "ID"}}
+
+      DADOS ATUAIS: ${JSON.stringify(contexto)}
+      PEDIDO DO USUÁRIO: "${pergunta}"
+    `;
+
     const result = await model.generateContent(prompt);
     const respostaIA = result.response.text();
 
-    // Tenta verificar se a IA mandou um comando JSON
+    console.log("Resposta da IA:", respostaIA); // Ajuda a debugar no console
+
     if (respostaIA.includes("{")) {
       const jsonLimpo = respostaIA.match(/\{.*\}/s)[0];
       const comando = JSON.parse(jsonLimpo);
-      await executarComandoIA(comando); // Função que vamos criar abaixo
-      setAiResponse("✅ Comando executado com sucesso!");
+      await executarComandoIA(comando);
+      // O setAiResponse é atualizado dentro do executarComandoIA ou aqui:
+      if (!respostaIA.includes("DELETE")) {
+         setAiResponse("✅ Comando executado com sucesso!");
+      }
     } else {
-      // Se não for JSON, é uma pergunta da IA (ex: "Qual a duração?")
       setAiResponse(respostaIA);
     }
   } catch (error) {
     console.error("Erro na IA:", error);
-    setAiResponse("Ops, não entendi o comando. Pode repetir?");
+    setAiResponse("Ops, tive um problema ao conectar com meu cérebro. Verifique a chave VITE_GEMINI_KEY no Render.");
   }
 };
   const executarComandoIA = async (comando) => {
