@@ -1287,35 +1287,103 @@ ${appointments.map(a => {
   const askAI = async (pergunta) => {
   const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-  // 1. Criamos um "Resumo" do que está acontecendo no salão para a IA ler
-  const dadosDoSalao = `
-    Contexto do Salão ${nomeEmpresa}:
-    - Clientes cadastrados: ${clients.length}
-    - Serviços: ${services.map(s => s.nome + " (R$" + s.preco + ")").join(", ")}
-    - Agendamentos hoje: ${appointments.filter(a => new Date(a.dataHora).toLocaleDateString() === new Date().toLocaleDateString()).length}
-    - Faturamento total do mês: R$ ${getChartData().total}
-    - Produtos em nível crítico: ${inventory.filter(p => Number(p.quantidade) <= Number(p.alertaCritico)).map(p => p.nome).join(", ")}
+  // 1. Preparamos o "Mapa" para a IA não se perder
+  const contexto = {
+    usuarioAtual: nomeParaExibir,
+    clientes: clients.map(c => ({ id: c.id, nome: c.nome, telefone: c.telefone })),
+    servicos: services.map(s => ({ id: s.id, nome: s.nome, preco: s.preco, duracao: s.duracao })),
+    dataHoje: new Date().toISOString().split('T')[0],
+    horaAgora: new Date().toLocaleTimeString()
+  };
+
+  const prompt = `
+     `Você é a Secretária Executiva do sistema Pragendar. 
+    Você está conversando com: ${contexto.usuarioAtual}.
+      REGRAS DE SEGURANÇA:
+    1. Se o usuário pedir para APAGAR, EXCLUIR ou DELETAR algo (cliente, serviço ou agendamento):
+       - NÃO envie o comando JSON na primeira vez.
+       - Responda apenas em texto: "⚠️ {contexto.usuarioAtual}, você tem certeza que deseja apagar [NOME DO ITEM]? Digite 'SIM, PODE APAGAR' para confirmar."
+    
+    2. SÓ envie o comando JSON de deleção (ex: DELETE_CLIENT) se o usuário disser "Sim", "Confirmar", "Pode apagar" ou algo que indique que ele já sabe o que está fazendo.
+
+    FORMATOS DE COMANDO:
+    {"acao": "CREATE_APPOINTMENT", "dados": {...}}
+    {"acao": "CREATE_SERVICE", "dados": {...}}
+    {"acao": "DELETE_CLIENT", "dados": {"id": "ID_AQUI"}}
+    {"acao": "DELETE_SERVICE", "dados": {"id": "ID_AQUI"}}
+    {"acao": "DELETE_APPOINTMENT", "dados": {"id": "ID_AQUI"}}
+
+
+    PEDIDO: "${pergunta}"
   `;
 
   try {
-    // 2. O Gemini lê os dados e responde a pergunta da Cris
-    const prompt = `Você é a Gerente Virtual do salão da Cris. 
-    Use os dados abaixo para responder a pergunta de forma curta e amigável.
-    
-    ${dadosDoSalao}
-    
-    Pergunta da Cris: "${pergunta}"`;
-
     const result = await model.generateContent(prompt);
     const respostaIA = result.response.text();
 
-    setAiChatHistory([...aiChatHistory, { pergunta, resposta: respostaIA, timestamp: new Date() }]);
-    setAiResponse(respostaIA);
-    return respostaIA;
-
+    // Tenta verificar se a IA mandou um comando JSON
+    if (respostaIA.includes("{")) {
+      const jsonLimpo = respostaIA.match(/\{.*\}/s)[0];
+      const comando = JSON.parse(jsonLimpo);
+      await executarComandoIA(comando); // Função que vamos criar abaixo
+      setAiResponse("✅ Comando executado com sucesso!");
+    } else {
+      // Se não for JSON, é uma pergunta da IA (ex: "Qual a duração?")
+      setAiResponse(respostaIA);
+    }
   } catch (error) {
     console.error("Erro na IA:", error);
-    return "Ops, tive um pequeno curto-circuito. Pode perguntar de novo?";
+    setAiResponse("Ops, não entendi o comando. Pode repetir?");
+  }
+};
+  const executarComandoIA = async (comando) => {
+  const { acao, dados } = comando;
+  try {
+    switch (acao) {
+      case "CREATE_APPOINTMENT":
+        await addDoc(collection(db, "appointments"), {
+          ...dados,
+          status: "pendente",
+          tenantId: user.uid,
+          createdAt: serverTimestamp()
+        });
+        break;
+
+      case "CREATE_SERVICE":
+        await addDoc(collection(db, "services"), {
+          nome: dados.nome,
+          preco: Number(dados.preco),
+          duracao: Number(dados.duracao),
+          tenantId: user.uid
+        });
+        break;
+
+      // 🗑️ COMANDOS DE DELEÇÃO PROTEGIDOS
+      case "DELETE_CLIENT":
+        await deleteDoc(doc(db, "clients", dados.id));
+        setAiResponse("🗑️ Cliente removido com sucesso!");
+        break;
+
+      case "DELETE_SERVICE":
+        await deleteDoc(doc(db, "services", dados.id));
+        setAiResponse("🗑️ Serviço excluído do catálogo.");
+        break;
+
+      case "DELETE_APPOINTMENT":
+        await deleteDoc(doc(db, "appointments", dados.id));
+        setAiResponse("🗑️ Horário cancelado e removido da agenda.");
+        break;
+
+      default:
+        console.log("Ação não reconhecida:", acao);
+    }
+    
+    // Recarrega os dados para a Cris ver a mudança na hora
+    loadData(user.uid); 
+    
+  } catch (e) {
+    console.error("Erro na execução da IA:", e);
+    alert("❌ A IA tentou um comando, mas o banco de dados recusou.");
   }
 };
 
@@ -1328,11 +1396,13 @@ ${appointments.map(a => {
       reader.readAsDataURL(file);
     });
 
-    const prompt = `Analise esta foto de uma agenda de papel. 
-      Extraia: Nome da Cliente, Serviço e Horário. 
-      Retorne APENAS um JSON no formato: 
-      [{"nome": "Maria", "servico": "Corte", "hora": 14, "data": "2026-03-01"}] 
-      Se não entender algo, ignore. Use a data de hoje como padrão se não houver data.`;
+    const prompt = `Você é um scanner de agenda. 
+Analise esta imagem e extraia os agendamentos.
+Retorne APENAS um JSON no formato: 
+[{"nome": "Cliente", "data": "YYYY-MM-DD", "hora": 10}]`;
+     
+    PEDIDO DO USUÁRIO: "${pergunta}"
+  `;
 
     try {
       const result = await model.generateContent([
