@@ -836,103 +836,59 @@ async function loadProfile(uid) {
   }
 };
 
-  const handleCSVImport = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !user) return;
-
-    setImportingCSV(true);
-    const reader = new FileReader();
-
-    reader.onload = async (event) => {
-      try {
-        let content = event.target.result;
-        if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
-
-        const lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")
-                             .map(l => l.trim()).filter(l => l.length > 0);
-        
-        let totalCount = 0;
-        let batch = writeBatch(db);
-        let batchCount = 0;
-
-        for (let i = 1; i < lines.length; i++) {
-          try {
-            const parts = lines[i].split(/[;,]/).map(item => item?.trim());
-
-            if (parts.length > 0) {
-              const nomeCompleto = [parts[0], parts[1], parts[2]]
-                .filter(Boolean)
-                .join(" ");
-
-              let telefoneFinal = parts[3] || parts[4] || "";
-              telefoneFinal = telefoneFinal.replace(/[^\d+() -]/g, "");
-
-              if (nomeCompleto && nomeCompleto !== "First Name Middle Name Last Name") {
-                const newRef = doc(collection(db, "clients"));
-                batch.set(newRef, {
-                  nome: nomeCompleto,
-                  telefone: telefoneFinal,
-                  tenantId: user.uid,
-                  createdAt: serverTimestamp()
-                });
-                
-                batchCount++;
-                totalCount++;
-
-                if (batchCount === 500) {
-                  await batch.commit();
-                  batch = writeBatch(db);
-                  batchCount = 0;
-                  console.log(`✅ ${totalCount} contatos processados...`);
-                }
-              }
-            }
-          } catch (err) {
-            console.error(`Erro na linha ${i + 1}:`, err);
+  // 📄 FUNÇÃO 1: IMPORTAR CSV (EXCEL/GOOGLE)
+const handleCSVImport = async (e) => {
+  const file = e.target.files[0];
+  if (!file || !user) return;
+  setImportingCSV(true);
+  const reader = new FileReader();
+  reader.onload = async (event) => {
+    try {
+      let content = event.target.result;
+      if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
+      const lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")
+                           .map(l => l.trim()).filter(l => l.length > 0);
+      let totalCount = 0;
+      let batch = writeBatch(db);
+      let batchCount = 0;
+      for (let i = 1; i < lines.length; i++) {
+        const parts = lines[i].split(/[;,]/).map(item => item?.trim());
+        if (parts.length > 0) {
+          const nomeCompleto = [parts[0], parts[1], parts[2]].filter(Boolean).join(" ");
+          let tel = (parts[3] || parts[4] || "").replace(/[^\d+() -]/g, "");
+          if (nomeCompleto && nomeCompleto !== "First Name") {
+            const newRef = doc(collection(db, "clients"));
+            batch.set(newRef, { nome: nomeCompleto, telefone: tel, tenantId: user.uid, createdAt: serverTimestamp() });
+            batchCount++; totalCount++;
+            if (batchCount === 500) { await batch.commit(); batch = writeBatch(db); batchCount = 0; }
           }
         }
-
-        if (batchCount > 0) {
-          await batch.commit();
-        }
-
-        loadData(user.uid);
-        alert(`✅ Sucesso! ${totalCount} contatos importados com nomes completos.`);
-      } catch (error) {
-        alert("❌ Erro ao processar arquivo: " + error.message);
-      } finally {
-        setImportingCSV(false);
-        e.target.value = ""; 
       }
-    };
-
-    reader.readAsText(file, "UTF-8");
+      if (batchCount > 0) await batch.commit();
+      loadData(user.uid);
+      alert(`✅ Sucesso! ${totalCount} contatos importados.`);
+    } catch (error) { alert("❌ Erro no CSV: " + error.message); }
+    finally { setImportingCSV(false); e.target.value = ""; }
   };
-// 📱 FUNÇÃO 1: IMPORTAR ARQUIVO DA AGENDA (.VCF)
+  reader.readAsText(file, "UTF-8");
+};
+
+// 📱 FUNÇÃO 2: IMPORTAR ARQUIVO DA AGENDA (.VCF)
 const handleVCFImport = async (e) => {
   const file = e.target.files[0];
-  if (!file) return;
-
+  if (!file || !user) return;
   const reader = new FileReader();
   reader.onload = async (event) => {
     const content = event.target.result;
     const contacts = [];
     const vcardBlocks = content.split("BEGIN:VCARD");
-
     vcardBlocks.forEach(block => {
-      // Pega o Nome (FN: ou N:)
       const nameMatch = block.match(/FN:(.*)|N:(.*);(.*)/);
       const name = nameMatch ? (nameMatch[1] || nameMatch[2]).replace(/;/g, " ").trim() : "";
-      
-      // Pega o Telefone (TEL:)
       const telMatch = block.match(/TEL.*:(.*)/);
       const tel = telMatch ? telMatch[1].replace(/\D/g, "") : "";
-
-      if (name && tel.length >= 8) {
-        contacts.push({ nome: name, telefone: tel });
-      }
+      if (name && tel.length >= 8) contacts.push({ nome: name, telefone: tel });
     });
-
     if (contacts.length > 0) {
       const batch = writeBatch(db);
       contacts.forEach(c => {
@@ -940,11 +896,41 @@ const handleVCFImport = async (e) => {
         batch.set(newRef, { ...c, tenantId: user.uid, createdAt: serverTimestamp() });
       });
       await batch.commit();
-      alert(`✅ Sucesso! ${contacts.length} contatos importados da sua agenda!`);
+      alert(`✅ Sucesso! ${contacts.length} contatos VCF importados.`);
       loadData(user.uid);
     }
   };
   reader.readAsText(file);
+};
+
+// 🌟 FUNÇÃO 3: BUSCAR DIRETO DA AGENDA DO CELULAR (NATIVO)
+const handleNativeContacts = async () => {
+  const supported = ('contacts' in navigator && 'ContactsManager' in window);
+  if (!supported) {
+    alert("❌ Seu navegador não suporta a importação direta. Use o Chrome ou Safari no celular.");
+    return;
+  }
+  try {
+    const props = ['name', 'tel'];
+    const opts = { multiple: true };
+    const contacts = await navigator.contacts.select(props, opts);
+    if (contacts.length > 0) {
+      const batch = writeBatch(db);
+      let count = 0;
+      contacts.forEach(c => {
+        const nome = c.name?.[0] || "Sem Nome";
+        const tel = (c.tel?.[0] || "").replace(/\D/g, "");
+        if (tel.length >= 8) {
+          const newRef = doc(collection(db, "clients"));
+          batch.set(newRef, { nome, telefone: tel, tenantId: user.uid, createdAt: serverTimestamp() });
+          count++;
+        }
+      });
+      await batch.commit();
+      alert(`✅ Sucesso! ${count} contatos importados da agenda.`);
+      loadData(user.uid);
+    }
+  } catch (error) { console.error("Erro agenda nativa:", error); }
 };
 
 // 📝 FUNÇÃO 2: IMPORTAR TEXTO COLADO (WHATSAPP/NOTAS)
@@ -1723,14 +1709,24 @@ ${appointments.map(a => {
                       <div style={{ width: "60px", fontWeight: "bold", color: primaryColor, fontSize: "14px" }}>{String(hora).padStart(2, "0")}:00</div>
                       <div style={{ flex: 1 }}>
                         {app ? (
-                          <div onClick={() => {setSelHora(hora); setEditAppId(app.id); setSelCliente(app.clientId); setSelServico(app.serviceId); setClientSearch(getNome(clients, app.clientId)); setShowModal(true);}} style={{cursor:"pointer", opacity: isStart ? 1 : 0.6}}>
-                            <strong style={{color: modernTheme.text}}>{getNome(clients, app.clientId)}</strong> {isStart && `- ${getNome(services, app.serviceId)}`}
-                          </div>
-                        ) : (
-                          ehPassado ? 
-                          <span style={{color: modernTheme.textMuted, fontSize: "12px"}}>Indisponível</span> :
-                          <span onClick={() => {setSelHora(hora); setEditAppId(null); setSelCliente(""); setClientSearch(""); setShowModal(true);}} style={{color: modernTheme.success, cursor:"pointer", fontWeight: "bold", fontSize: "12px"}}>+ Disponível</span>
-                        )}
+  <div onClick={() => {setSelHora(hora); setEditAppId(app.id); setSelCliente(app.clientId); setSelServico(app.serviceId); setClientSearch(getNome(clients, app.clientId)); setShowModal(true);}} style={{cursor:"pointer", opacity: isStart ? 1 : 0.6}}>
+    <strong style={{color: modernTheme.text}}>{getNome(clients, app.clientId)}</strong> {isStart && `- ${getNome(services, app.serviceId)}`}
+  </div>
+) : (
+  /* CRIS PODE CLICAR EM TUDO: Se for passado, aparece em cinza, se for futuro, em verde */
+  <span 
+    onClick={() => {setSelHora(hora); setEditAppId(null); setSelCliente(""); setClientSearch(""); setShowModal(true);}} 
+    style={{
+      color: ehPassado ? "#95a5a6" : modernTheme.success, 
+      cursor: "pointer", 
+      fontWeight: "bold", 
+      fontSize: "12px",
+      fontStyle: ehPassado ? "italic" : "normal"
+    }}
+  >
+    {ehPassado ? "+ Lançar Esquecido" : "+ Disponível"}
+  </span>
+)}
                       </div>
                       {isStart && (
                         <div style={{ display: "flex", gap: "3px" }}>
@@ -1897,37 +1893,52 @@ ${appointments.map(a => {
   />
 </div>
 
-<h3 style={{marginTop: "20px", fontSize: "16px"}}>📋 Extrato de {new Date(dataManualFin).toLocaleDateString("pt-BR")}</h3>
+{/* 📋 EXTRATO BLINDADO CONTRA FUSO HORÁRIO */}
+<h3 style={{marginTop: "20px", fontSize: "16px"}}>
+  📋 Extrato de {dataManualFin.split('-').reverse().join('/')}
+</h3>
 
 {(() => {
-  const transacoesDoDia = transactions.filter(t => {
+  const transSeguras = transactions || [];
+  
+  const transacoesDoDia = transSeguras.filter(t => {
     if (!t || !t.data) return false;
-    try {
-      return new Date(t.data).toLocaleDateString("pt-BR") === new Date(dataManualFin).toLocaleDateString("pt-BR");
-    } catch (e) { return false; }
+
+    // 1. Transformamos qualquer data (String ou Timestamp) em texto YYYY-MM-DD
+    let dataFormatada = "";
+    if (typeof t.data === 'string') {
+      dataFormatada = t.data.split('T')[0];
+    } else if (t.data.toDate) { 
+      // Se for Timestamp do Firebase
+      const d = t.data.toDate();
+      const ano = d.getFullYear();
+      const mes = String(d.getMonth() + 1).padStart(2, '0');
+      const dia = String(d.getDate()).padStart(2, '0');
+      dataFormatada = `${ano}-${mes}-${dia}`;
+    }
+
+    // 2. Comparamos texto com texto
+    return dataFormatada === dataManualFin;
   });
 
   if (transacoesDoDia.length === 0) {
     return (
       <div style={{textAlign: "center", padding: "30px", backgroundColor: "#f9f9f9", borderRadius: "10px", color: "#999"}}>
-        📭 Nenhuma movimentação encontrada nesta data.
+        📭 Nenhuma movimentação para o dia {dataManualFin.split('-').reverse().join('/')}
       </div>
     );
   }
 
   return transacoesDoDia
-    .sort((a, b) => (b.data || "").localeCompare(a.data || ""))
+    .sort((a, b) => (b.data || "").toString().localeCompare((a.data || "").toString()))
     .map(t => (
       <div key={t.id} style={{...itemStyle, marginBottom: "8px", backgroundColor: "#fff", borderRadius: "8px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)"}}>
         <span style={{flex:1}}>
-          <small style={{color: "#999"}}>{new Date(t.data).toLocaleTimeString("pt-BR", {hour: '2-digit', minute:'2-digit'})}</small><br/>
+          <small style={{color: "#999"}}>
+            {/* Aqui usamos o toLocaleTimeString apenas para a hora, que costuma não dar erro de dia */}
+            {t.data.toDate ? t.data.toDate().toLocaleTimeString("pt-BR", {hour:'2-digit', minute:'2-digit'}) : new Date(t.data).toLocaleTimeString("pt-BR", {hour:'2-digit', minute:'2-digit'})}
+          </small><br/>
           <strong style={{color: modernTheme.text}}>{t.descricao || "Sem descrição"}</strong>
-          <br/>
-          <small style={{color: "#666", fontSize: "10px"}}>
-            {t.formaPagamento === "pix" && "📲 Pix"}
-            {t.formaPagamento === "dinheiro" && "💵 Dinheiro"}
-            {t.formaPagamento === "cartao" && "💳 Cartão"}
-          </small>
         </span>
         <strong style={{color: t.tipo === "receita" ? modernTheme.success : modernTheme.danger, marginRight: "10px"}}>
           {t.tipo === "receita" ? "+" : "-"} R$ {(Number(t.valor) || 0).toFixed(2)}
@@ -1991,6 +2002,24 @@ ${appointments.map(a => {
       <small style={{fontWeight: "bold", color: "#2e7d32"}}>Colar Lista<br/>(Do WhatsApp)</small>
     </div>
   </div>
+              {/* OPÇÃO: AGENDA NATIVA */}
+<div 
+  onClick={handleNativeContacts}
+  style={{
+    padding: "12px", 
+    backgroundColor: "#e3f2fd", 
+    borderRadius: "10px", 
+    textAlign: "center", 
+    cursor: "pointer", 
+    border: "1px solid #2196f340",
+    gridColumn: "span 2" // Faz ele ficar larguinho
+  }}
+>
+  <span style={{fontSize: "20px"}}>🌟</span><br/>
+  <small style={{fontWeight: "bold", color: "#1976d2"}}>
+    Importar Direto da Agenda <br/>(Sem precisar de arquivo)
+  </small>
+</div>
 
   <p style={{fontSize: "10px", color: "#999", textAlign: "center", margin: 0}}>
     Dica: No celular, vá em Contatos > Configurações > Exportar para gerar o arquivo .vcf
