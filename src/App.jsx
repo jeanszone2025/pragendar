@@ -836,103 +836,59 @@ async function loadProfile(uid) {
   }
 };
 
-  const handleCSVImport = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !user) return;
-
-    setImportingCSV(true);
-    const reader = new FileReader();
-
-    reader.onload = async (event) => {
-      try {
-        let content = event.target.result;
-        if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
-
-        const lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")
-                             .map(l => l.trim()).filter(l => l.length > 0);
-        
-        let totalCount = 0;
-        let batch = writeBatch(db);
-        let batchCount = 0;
-
-        for (let i = 1; i < lines.length; i++) {
-          try {
-            const parts = lines[i].split(/[;,]/).map(item => item?.trim());
-
-            if (parts.length > 0) {
-              const nomeCompleto = [parts[0], parts[1], parts[2]]
-                .filter(Boolean)
-                .join(" ");
-
-              let telefoneFinal = parts[3] || parts[4] || "";
-              telefoneFinal = telefoneFinal.replace(/[^\d+() -]/g, "");
-
-              if (nomeCompleto && nomeCompleto !== "First Name Middle Name Last Name") {
-                const newRef = doc(collection(db, "clients"));
-                batch.set(newRef, {
-                  nome: nomeCompleto,
-                  telefone: telefoneFinal,
-                  tenantId: user.uid,
-                  createdAt: serverTimestamp()
-                });
-                
-                batchCount++;
-                totalCount++;
-
-                if (batchCount === 500) {
-                  await batch.commit();
-                  batch = writeBatch(db);
-                  batchCount = 0;
-                  console.log(`✅ ${totalCount} contatos processados...`);
-                }
-              }
-            }
-          } catch (err) {
-            console.error(`Erro na linha ${i + 1}:`, err);
+  // 📄 FUNÇÃO 1: IMPORTAR CSV (EXCEL/GOOGLE)
+const handleCSVImport = async (e) => {
+  const file = e.target.files[0];
+  if (!file || !user) return;
+  setImportingCSV(true);
+  const reader = new FileReader();
+  reader.onload = async (event) => {
+    try {
+      let content = event.target.result;
+      if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
+      const lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")
+                           .map(l => l.trim()).filter(l => l.length > 0);
+      let totalCount = 0;
+      let batch = writeBatch(db);
+      let batchCount = 0;
+      for (let i = 1; i < lines.length; i++) {
+        const parts = lines[i].split(/[;,]/).map(item => item?.trim());
+        if (parts.length > 0) {
+          const nomeCompleto = [parts[0], parts[1], parts[2]].filter(Boolean).join(" ");
+          let tel = (parts[3] || parts[4] || "").replace(/[^\d+() -]/g, "");
+          if (nomeCompleto && nomeCompleto !== "First Name") {
+            const newRef = doc(collection(db, "clients"));
+            batch.set(newRef, { nome: nomeCompleto, telefone: tel, tenantId: user.uid, createdAt: serverTimestamp() });
+            batchCount++; totalCount++;
+            if (batchCount === 500) { await batch.commit(); batch = writeBatch(db); batchCount = 0; }
           }
         }
-
-        if (batchCount > 0) {
-          await batch.commit();
-        }
-
-        loadData(user.uid);
-        alert(`✅ Sucesso! ${totalCount} contatos importados com nomes completos.`);
-      } catch (error) {
-        alert("❌ Erro ao processar arquivo: " + error.message);
-      } finally {
-        setImportingCSV(false);
-        e.target.value = ""; 
       }
-    };
-
-    reader.readAsText(file, "UTF-8");
+      if (batchCount > 0) await batch.commit();
+      loadData(user.uid);
+      alert(`✅ Sucesso! ${totalCount} contatos importados.`);
+    } catch (error) { alert("❌ Erro no CSV: " + error.message); }
+    finally { setImportingCSV(false); e.target.value = ""; }
   };
-// 📱 FUNÇÃO 1: IMPORTAR ARQUIVO DA AGENDA (.VCF)
+  reader.readAsText(file, "UTF-8");
+};
+
+// 📱 FUNÇÃO 2: IMPORTAR ARQUIVO DA AGENDA (.VCF)
 const handleVCFImport = async (e) => {
   const file = e.target.files[0];
-  if (!file) return;
-
+  if (!file || !user) return;
   const reader = new FileReader();
   reader.onload = async (event) => {
     const content = event.target.result;
     const contacts = [];
     const vcardBlocks = content.split("BEGIN:VCARD");
-
     vcardBlocks.forEach(block => {
-      // Pega o Nome (FN: ou N:)
       const nameMatch = block.match(/FN:(.*)|N:(.*);(.*)/);
       const name = nameMatch ? (nameMatch[1] || nameMatch[2]).replace(/;/g, " ").trim() : "";
-      
-      // Pega o Telefone (TEL:)
       const telMatch = block.match(/TEL.*:(.*)/);
       const tel = telMatch ? telMatch[1].replace(/\D/g, "") : "";
-
-      if (name && tel.length >= 8) {
-        contacts.push({ nome: name, telefone: tel });
-      }
+      if (name && tel.length >= 8) contacts.push({ nome: name, telefone: tel });
     });
-
     if (contacts.length > 0) {
       const batch = writeBatch(db);
       contacts.forEach(c => {
@@ -940,11 +896,41 @@ const handleVCFImport = async (e) => {
         batch.set(newRef, { ...c, tenantId: user.uid, createdAt: serverTimestamp() });
       });
       await batch.commit();
-      alert(`✅ Sucesso! ${contacts.length} contatos importados da sua agenda!`);
+      alert(`✅ Sucesso! ${contacts.length} contatos VCF importados.`);
       loadData(user.uid);
     }
   };
   reader.readAsText(file);
+};
+
+// 🌟 FUNÇÃO 3: BUSCAR DIRETO DA AGENDA DO CELULAR (NATIVO)
+const handleNativeContacts = async () => {
+  const supported = ('contacts' in navigator && 'ContactsManager' in window);
+  if (!supported) {
+    alert("❌ Seu navegador não suporta a importação direta. Use o Chrome ou Safari no celular.");
+    return;
+  }
+  try {
+    const props = ['name', 'tel'];
+    const opts = { multiple: true };
+    const contacts = await navigator.contacts.select(props, opts);
+    if (contacts.length > 0) {
+      const batch = writeBatch(db);
+      let count = 0;
+      contacts.forEach(c => {
+        const nome = c.name?.[0] || "Sem Nome";
+        const tel = (c.tel?.[0] || "").replace(/\D/g, "");
+        if (tel.length >= 8) {
+          const newRef = doc(collection(db, "clients"));
+          batch.set(newRef, { nome, telefone: tel, tenantId: user.uid, createdAt: serverTimestamp() });
+          count++;
+        }
+      });
+      await batch.commit();
+      alert(`✅ Sucesso! ${count} contatos importados da agenda.`);
+      loadData(user.uid);
+    }
+  } catch (error) { console.error("Erro agenda nativa:", error); }
 };
 
 // 📝 FUNÇÃO 2: IMPORTAR TEXTO COLADO (WHATSAPP/NOTAS)
@@ -2016,6 +2002,24 @@ ${appointments.map(a => {
       <small style={{fontWeight: "bold", color: "#2e7d32"}}>Colar Lista<br/>(Do WhatsApp)</small>
     </div>
   </div>
+              {/* OPÇÃO: AGENDA NATIVA */}
+<div 
+  onClick={handleNativeContacts}
+  style={{
+    padding: "12px", 
+    backgroundColor: "#e3f2fd", 
+    borderRadius: "10px", 
+    textAlign: "center", 
+    cursor: "pointer", 
+    border: "1px solid #2196f340",
+    gridColumn: "span 2" // Faz ele ficar larguinho
+  }}
+>
+  <span style={{fontSize: "20px"}}>🌟</span><br/>
+  <small style={{fontWeight: "bold", color: "#1976d2"}}>
+    Importar Direto da Agenda <br/>(Sem precisar de arquivo)
+  </small>
+</div>
 
   <p style={{fontSize: "10px", color: "#999", textAlign: "center", margin: 0}}>
     Dica: No celular, vá em Contatos > Configurações > Exportar para gerar o arquivo .vcf
