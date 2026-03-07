@@ -1897,39 +1897,50 @@ ${appointments.map(a => {
   />
 </div>
 
+{/* 📋 EXTRATO BLINDADO CONTRA FUSO HORÁRIO */}
 <h3 style={{marginTop: "20px", fontSize: "16px"}}>
-  📋 Extrato de {(() => {
-    // Adicionamos 'T12:00:00' para garantir que o JS leia o dia correto no Brasil
-    return new Date(dataManualFin + 'T12:00:00').toLocaleDateString("pt-BR");
-  })()}
+  📋 Extrato de {dataManualFin.split('-').reverse().join('/')}
 </h3>
 
 {(() => {
   const transSeguras = transactions || [];
   
-  // Filtro inteligente: compara apenas o texto "AAAA-MM-DD"
   const transacoesDoDia = transSeguras.filter(t => {
     if (!t || !t.data) return false;
-    // Pega os primeiros 10 caracteres da data do banco (ex: 2026-03-05)
-    const dataNoBanco = t.data.split('T')[0]; 
-    return dataNoBanco === dataManualFin;
+
+    // 1. Transformamos qualquer data (String ou Timestamp) em texto YYYY-MM-DD
+    let dataFormatada = "";
+    if (typeof t.data === 'string') {
+      dataFormatada = t.data.split('T')[0];
+    } else if (t.data.toDate) { 
+      // Se for Timestamp do Firebase
+      const d = t.data.toDate();
+      const ano = d.getFullYear();
+      const mes = String(d.getMonth() + 1).padStart(2, '0');
+      const dia = String(d.getDate()).padStart(2, '0');
+      dataFormatada = `${ano}-${mes}-${dia}`;
+    }
+
+    // 2. Comparamos texto com texto
+    return dataFormatada === dataManualFin;
   });
 
   if (transacoesDoDia.length === 0) {
     return (
       <div style={{textAlign: "center", padding: "30px", backgroundColor: "#f9f9f9", borderRadius: "10px", color: "#999"}}>
-        📭 Nenhuma movimentação encontrada para este dia.
+        📭 Nenhuma movimentação para o dia {dataManualFin.split('-').reverse().join('/')}
       </div>
     );
   }
 
   return transacoesDoDia
-    .sort((a, b) => (b.data || "").localeCompare(a.data || ""))
+    .sort((a, b) => (b.data || "").toString().localeCompare((a.data || "").toString()))
     .map(t => (
       <div key={t.id} style={{...itemStyle, marginBottom: "8px", backgroundColor: "#fff", borderRadius: "8px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)"}}>
         <span style={{flex:1}}>
           <small style={{color: "#999"}}>
-            {new Date(t.data).toLocaleTimeString("pt-BR", {hour: '2-digit', minute:'2-digit'})}
+            {/* Aqui usamos o toLocaleTimeString apenas para a hora, que costuma não dar erro de dia */}
+            {t.data.toDate ? t.data.toDate().toLocaleTimeString("pt-BR", {hour:'2-digit', minute:'2-digit'}) : new Date(t.data).toLocaleTimeString("pt-BR", {hour:'2-digit', minute:'2-digit'})}
           </small><br/>
           <strong style={{color: modernTheme.text}}>{t.descricao || "Sem descrição"}</strong>
         </span>
