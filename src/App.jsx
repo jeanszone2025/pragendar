@@ -2882,38 +2882,34 @@ Por favor, processe a imagem agora.`; // SÓ AQUI fecha a crase e o ponto e vír
           }}
         />
 
-  {/* SUGESTÕES RÁPIDAS */}
-           {/* SUGESTÕES RÁPIDAS (Corrigido para funcionar) */}
-<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", marginTop: "10px" }}>
+
+{/* SUGESTÕES RÁPIDAS - Versão Corrigida */}
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
   {[
-    { texto: "Hoje", icon: "📅", query: "Me dê o resumo da agenda de hoje e quem falta confirmar." },
-    { texto: "Caixa", icon: "💰", query: "Qual meu faturamento total este mês e quanto entrou hoje?" },
-    { texto: "Clientes", icon: "👥", query: "Quantos clientes eu tenho? Me dê um resumo da lista." },
-    { texto: "Ausentes", icon: "🔄", query: "Quais clientes não aparecem há mais de 30 dias?" }
-  ].map((btn, i) => (
+    { icon: "📅", texto: "Hoje", query: "Me dê o resumo da agenda de hoje" },
+    { icon: "💰", texto: "Caixa", query: "Como está o meu faturamento e caixa este mês?" },
+    { icon: "👥", texto: "Clientes", query: "Quantos clientes eu tenho e qual o perfil deles?" },
+    { icon: "🔄", texto: "Ausentes", query: "Quais clientes não aparecem há mais de 30 dias?" }
+  ].map((item, i) => (
     <button
       key={i}
       onClick={() => {
-        setAiQuery("");
-        setAiResponse("🤖 Analisando dados...");
-        askAI(btn.query);
+        setAiResponse("🤖 Analisando...");
+        askAI(item.query);
       }}
       style={{
-        padding: "10px",
+        padding: "8px",
         backgroundColor: modernTheme.primaryLight,
         border: `1px solid ${primaryColor}40`,
         borderRadius: modernTheme.radiusTiny,
         cursor: "pointer",
         fontSize: "11px",
-        fontWeight: "bold",
+        fontWeight: "600",
         color: modernTheme.text,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: "4px"
+        transition: "all 0.2s ease"
       }}
     >
-      {btn.icon} {btn.texto}
+      {item.icon} {item.texto}
     </button>
   ))}
 </div>
