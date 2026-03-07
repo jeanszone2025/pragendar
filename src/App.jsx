@@ -1290,117 +1290,106 @@ ${appointments.map(a => {
   let sucesso = false;
 
   const nomeParaExibir = nomeEmpresa || "Profissional";
+  
+  // 1. TURBINANDO O CONTEXTO: Agora ela vê TUDO
   const contexto = {
     usuarioAtual: nomeParaExibir,
     dataHoje: new Date().toLocaleDateString("pt-BR"),
-    totalClientes: clients.length,
-    clientes: clients.slice(0, 20).map(c => ({ id: c.id, nome: c.nome })), // Enviamos alguns para exemplo
-    servicos: services.map(s => ({ id: s.id, nome: s.nome, preco: s.preco })),
-    // ADICIONADO: A IA agora vê a agenda!
-    agenda: appointments.map(a => ({
-      data: new Date(a.dataHora).toLocaleDateString("pt-BR"),
-      hora: new Date(a.dataHora).getHours() + ":00",
-      cliente: getNome(clients, a.clientId) || a.clientName,
-      servico: getNome(services, a.serviceId),
-      status: a.status
-    })).filter(a => a.data === new Date().toLocaleDateString("pt-BR")) // Filtra só os de hoje para não pesar
+    resumoSistema: {
+      totalClientes: clients.length,
+      totalServicos: services.length,
+      itensEstoqueBaixo: inventory.filter(i => i.quantidade <= i.alertaCritico).length,
+      faturamentoMes: transactions.filter(t => t.tipo === "receita").reduce((acc, t) => acc + t.valor, 0)
+    },
+    clientes: clients.map(c => ({ id: c.id, nome: c.nome, telefone: c.telefone })),
+    servicos: services.map(s => ({ id: s.id, nome: s.nome, preco: s.preco, duracao: s.duracao })),
+    agendaHoje: appointments.filter(a => new Date(a.dataHora).toLocaleDateString("pt-BR") === new Date().toLocaleDateString("pt-BR"))
+      .map(a => ({ id: a.id, hora: new Date(a.dataHora).getHours() + ":00", cliente: getNome(clients, a.clientId) || a.clientName, servico: getNome(services, a.serviceId), status: a.status })),
+    estoque: inventory.map(i => ({ id: i.id, nome: i.nome, qtd: i.quantidade }))
   };
 
   const promptIA = `
-    Você é a Secretária Executiva do Pragendar. 
-    AVISO: VOCÊ JÁ TEM ACESSO AOS DADOS. NÃO PEÇA PERMISSÃO.
-    
-    DADOS DO SISTEMA: ${JSON.stringify(contexto)}
+    Você é a Secretária Executiva de Elite do Pragendar. 
+    VOCÊ TEM PODER TOTAL DE EXECUÇÃO.
 
-    SUA MISSÃO:
-    - Se perguntarem "Hoje", use a lista "agenda" acima.
-    - Se perguntarem "Clientes", use o "totalClientes".
-    - Se pedirem para agendar, criar ou deletar, use os formatos JSON que combinamos.
-    - Se a informação não estiver nos dados acima, diga que ainda não foi cadastrada.
+    DADOS ATUAIS DO SISTEMA: ${JSON.stringify(contexto)}
 
-    PEDIDO DO USUÁRIO: "${pergunta}"
+    SUAS DIRETRIZES:
+    1. ANALISE: Use os dados acima para responder. Se falarem "Caixa", olhe faturamentoMes. Se falarem "Hoje", olhe agendaHoje.
+    2. AÇÃO: Se o usuário pedir para criar, editar ou apagar, gere o JSON.
+    3. SEGURANÇA: Para APAGAR, peça confirmação em texto primeiro. Para CRIAR ou EDITAR, pode mandar o JSON direto se tiver os dados.
+    4. FORMATO DE COMANDO: Retorne APENAS o JSON no formato: {"acao": "NOME_ACAO", "dados": {...}}
+
+    AÇÕES DISPONÍVEIS:
+    - CREATE_APPOINTMENT, UPDATE_APPOINTMENT, DELETE_APPOINTMENT
+    - CREATE_SERVICE, UPDATE_SERVICE, DELETE_SERVICE
+    - CREATE_CLIENT, UPDATE_CLIENT, DELETE_CLIENT
+    - ADD_TRANSACTION (para o financeiro)
+
+    PEDIDO: "${pergunta}"
   `;
 
   for (const modeloNome of modelosParaTentar) {
     if (sucesso) break; 
-
     try {
-      // 1. Criamos o modelo dentro desta tentativa
       const model = genAI.getGenerativeModel({ model: modeloNome }); 
-      
-      // 2. Usamos o modelo IMEDIATAMENTE aqui dentro
       const result = await model.generateContent(promptIA);
       const respostaIA = result.response.text();
 
-      // 3. Processamos a resposta
       if (respostaIA.includes("{")) {
         const jsonLimpo = respostaIA.match(/\{.*\}/s)[0];
         const comando = JSON.parse(jsonLimpo);
         await executarComandoIA(comando);
-        setAiResponse("✅ Comando executado!");
       } else {
         setAiResponse(respostaIA);
       }
-      
       sucesso = true; 
-    } catch (err) {
-      console.warn(`Tentativa com ${modeloNome} falhou:`, err.message);
-      // Se falhar, o loop pula para o próximo modelo e cria um NOVO 'model'
-    }
-  }
-
-  if (!sucesso) {
-    setAiResponse("🚨 Erro: Não consegui conectar com nenhum modelo da IA.");
+    } catch (err) { console.warn(`Falha no ${modeloNome}`, err.message); }
   }
 };
   const executarComandoIA = async (comando) => {
   const { acao, dados } = comando;
   try {
     switch (acao) {
+      // --- AGENDAMENTOS ---
       case "CREATE_APPOINTMENT":
-        await addDoc(collection(db, "appointments"), {
-          ...dados,
-          status: "pendente",
-          tenantId: user.uid,
-          createdAt: serverTimestamp()
-        });
+        await addDoc(collection(db, "appointments"), { ...dados, status: "pendente", tenantId: user.uid, createdAt: serverTimestamp() });
+        setAiResponse("✅ Horário agendado com sucesso!");
+        break;
+      
+      case "UPDATE_APPOINTMENT":
+        await updateDoc(doc(db, "appointments", dados.id), { ...dados });
+        setAiResponse("✅ Agendamento atualizado!");
         break;
 
+      // --- SERVIÇOS ---
       case "CREATE_SERVICE":
-        await addDoc(collection(db, "services"), {
-          nome: dados.nome,
-          preco: Number(dados.preco),
-          duracao: Number(dados.duracao),
-          tenantId: user.uid
-        });
+        await addDoc(collection(db, "services"), { ...dados, preco: Number(dados.preco), duracao: Number(dados.duracao), tenantId: user.uid });
+        setAiResponse("✅ Novo serviço adicionado ao catálogo!");
         break;
 
-      // 🗑️ COMANDOS DE DELEÇÃO PROTEGIDOS
+      // --- CLIENTES ---
+      case "CREATE_CLIENT":
+        await addDoc(collection(db, "clients"), { ...dados, tenantId: user.uid, createdAt: serverTimestamp() });
+        setAiResponse(`✅ Cliente ${dados.nome} cadastrado!`);
+        break;
+
+      // --- FINANCEIRO ---
+      case "ADD_TRANSACTION":
+        await addDoc(collection(db, "transactions"), { ...dados, valor: Number(dados.valor), data: new Date().toISOString(), tenantId: user.uid });
+        setAiResponse("💰 Lançamento financeiro realizado!");
+        break;
+
+      // --- DELEÇÕES ---
       case "DELETE_CLIENT":
         await deleteDoc(doc(db, "clients", dados.id));
-        setAiResponse("🗑️ Cliente removido com sucesso!");
+        setAiResponse("🗑️ Registro excluído permanentemente.");
         break;
-
-      case "DELETE_SERVICE":
-        await deleteDoc(doc(db, "services", dados.id));
-        setAiResponse("🗑️ Serviço excluído do catálogo.");
-        break;
-
-      case "DELETE_APPOINTMENT":
-        await deleteDoc(doc(db, "appointments", dados.id));
-        setAiResponse("🗑️ Horário cancelado e removido da agenda.");
-        break;
-
-      default:
-        console.log("Ação não reconhecida:", acao);
+      // ... adicione os outros DELETE_SERVICE e DELETE_APPOINTMENT aqui
     }
-    
-    // Recarrega os dados para a Cris ver a mudança na hora
     loadData(user.uid); 
-    
   } catch (e) {
-    console.error("Erro na execução da IA:", e);
-    alert("❌ A IA tentou um comando, mas o banco de dados recusou.");
+    setAiResponse("❌ Erro ao processar comando: " + e.message);
   }
 };
 
@@ -2894,36 +2883,40 @@ Por favor, processe a imagem agora.`; // SÓ AQUI fecha a crase e o ponto e vír
         />
 
   {/* SUGESTÕES RÁPIDAS */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
-              {[
-                { icon: "📅", texto: "Hoje", query: "Meus horários hoje" },
-                { icon: "💰", texto: "Caixa", query: "Meu financeiro" },
-                { icon: "👥", texto: "Clientes", query: "Quantos clientes tenho" },
-                { icon: "🔄", texto: "Ausentes", query: "Clientes sumidas" }
-              ].map((btn, i) => (
-                <button
-                  key={i}
-                  onClick={() => {
-                    askAI(btn.query);
-                    setAiQuery("");
-                  }}
-                  style={{
-                    padding: "8px",
-                    backgroundColor: modernTheme.primaryLight,
-                    border: `1px solid ${primaryColor}40`,
-                    borderRadius: modernTheme.radiusTiny,
-                    cursor: "pointer",
-                    fontSize: "11px",
-                    fontWeight: "600",
-                    color: modernTheme.text,
-                    transition: "all 0.2s ease"
-                  }}
-                >
-                  {btn.icon} {btn.texto}
-                </button>
-              ))}
-            </div>
-          </div>
+           {/* SUGESTÕES RÁPIDAS (Corrigido para funcionar) */}
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", marginTop: "10px" }}>
+  {[
+    { texto: "Hoje", icon: "📅", query: "Me dê o resumo da agenda de hoje e quem falta confirmar." },
+    { texto: "Caixa", icon: "💰", query: "Qual meu faturamento total este mês e quanto entrou hoje?" },
+    { texto: "Clientes", icon: "👥", query: "Quantos clientes eu tenho? Me dê um resumo da lista." },
+    { texto: "Ausentes", icon: "🔄", query: "Quais clientes não aparecem há mais de 30 dias?" }
+  ].map((btn, i) => (
+    <button
+      key={i}
+      onClick={() => {
+        setAiQuery("");
+        setAiResponse("🤖 Analisando dados...");
+        askAI(btn.query);
+      }}
+      style={{
+        padding: "10px",
+        backgroundColor: modernTheme.primaryLight,
+        border: `1px solid ${primaryColor}40`,
+        borderRadius: modernTheme.radiusTiny,
+        cursor: "pointer",
+        fontSize: "11px",
+        fontWeight: "bold",
+        color: modernTheme.text,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "4px"
+      }}
+    >
+      {btn.icon} {btn.texto}
+    </button>
+  ))}
+</div>
           
           <style dangerouslySetInnerHTML={{ __html: `
             @keyframes slideInRight {
