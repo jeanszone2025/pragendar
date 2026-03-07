@@ -1395,13 +1395,19 @@ ${appointments.map(a => {
       reader.readAsDataURL(file);
     });
 
-    const prompt = `Você é um scanner de agenda. 
-Analise esta imagem e extraia os agendamentos.
-Retorne APENAS um JSON no formato: 
-[{"nome": "Cliente", "data": "YYYY-MM-DD", "hora": 10}]`;
-     
-    PEDIDO DO USUÁRIO: "${pergunta}"
-  `;
+    // Dentro de processAgendaImage...
+const prompt = `Você é um scanner de agenda experiente. 
+Analise a imagem enviada e extraia todos os agendamentos que encontrar.
+
+REGRAS:
+1. Retorne APENAS um JSON puro, sem textos explicativos.
+2. Siga este formato: [{"nome": "Cliente", "data": "YYYY-MM-DD", "hora": 10}]
+
+DADOS ATUAIS DO SISTEMA:
+- Usuário logado: ${nomeEmpresa || "Profissional"}
+- Data de hoje: ${new Date().toLocaleDateString("pt-BR")}
+
+Por favor, processe a imagem agora.`; // SÓ AQUI fecha a crase e o ponto e vírgula!
 
     try {
       const result = await model.generateContent([
