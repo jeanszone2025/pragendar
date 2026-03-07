@@ -1286,60 +1286,49 @@ ${appointments.map(a => {
     win.document.close();
   };
   const askAI = async (pergunta) => {
-  try {
-    const modelosParaTentar = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
+  const modelosParaTentar = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
+  let sucesso = false;
 
-    // Criamos a variável que faltava para não dar erro
-    const nomeParaExibir = nomeEmpresa || "Profissional";
+  const nomeParaExibir = nomeEmpresa || "Profissional";
+  const contexto = {
+    usuarioAtual: nomeParaExibir,
+    clientes: clients.map(c => ({ id: c.id, nome: c.nome, telefone: c.telefone })),
+    servicos: services.map(s => ({ id: s.id, nome: s.nome, preco: s.preco, duracao: s.duracao })),
+    dataHoje: new Date().toLocaleDateString("pt-BR"),
+  };
 
-    // 1. Preparamos o "Mapa" com dados reais para a IA
-    const contexto = {
-      usuarioAtual: nomeParaExibir,
-      clientes: clients.map(c => ({ id: c.id, nome: c.nome, telefone: c.telefone })),
-      servicos: services.map(s => ({ id: s.id, nome: s.nome, preco: s.preco, duracao: s.duracao })),
-      dataHoje: new Date().toLocaleDateString("pt-BR"),
-      horaAgora: new Date().toLocaleTimeString("pt-BR")
-    };
+  const promptIA = `Você é a Secretária Executiva do Pragendar... PEDIDO: "${pergunta}"`;
 
-    const prompt = `
-      Você é a Secretária Executiva do sistema Pragendar. 
-      Você está conversando com: ${contexto.usuarioAtual}.
+  for (const modeloNome of modelosParaTentar) {
+    if (sucesso) break; 
 
-      REGRAS DE SEGURANÇA:
-      1. Se o usuário pedir para APAGAR, EXCLUIR ou DELETAR algo:
-         - NÃO envie o comando JSON na primeira vez.
-         - Responda apenas em texto perguntando se ${contexto.usuarioAtual} tem certeza.
+    try {
+      // 1. Criamos o modelo dentro desta tentativa
+      const model = genAI.getGenerativeModel({ model: modeloNome }); 
       
-      2. SÓ envie o comando JSON de deleção se o usuário confirmar.
+      // 2. Usamos o modelo IMEDIATAMENTE aqui dentro
+      const result = await model.generateContent(promptIA);
+      const respostaIA = result.response.text();
 
-      FORMATOS DE COMANDO (Retorne APENAS o JSON se houver confirmação ou ordem direta de criação):
-      {"acao": "CREATE_APPOINTMENT", "dados": {"clientId": "ID", "serviceId": "ID", "dataHora": "ISO_DATE"}}
-      {"acao": "CREATE_SERVICE", "dados": {"nome": "NOME", "preco": 0, "duracao": 0}}
-      {"acao": "DELETE_CLIENT", "dados": {"id": "ID"}}
-
-      DADOS ATUAIS: ${JSON.stringify(contexto)}
-      PEDIDO DO USUÁRIO: "${pergunta}"
-    `;
-
-    const result = await model.generateContent(prompt);
-    const respostaIA = result.response.text();
-
-    console.log("Resposta da IA:", respostaIA); // Ajuda a debugar no console
-
-    if (respostaIA.includes("{")) {
-      const jsonLimpo = respostaIA.match(/\{.*\}/s)[0];
-      const comando = JSON.parse(jsonLimpo);
-      await executarComandoIA(comando);
-      // O setAiResponse é atualizado dentro do executarComandoIA ou aqui:
-      if (!respostaIA.includes("DELETE")) {
-         setAiResponse("✅ Comando executado com sucesso!");
+      // 3. Processamos a resposta
+      if (respostaIA.includes("{")) {
+        const jsonLimpo = respostaIA.match(/\{.*\}/s)[0];
+        const comando = JSON.parse(jsonLimpo);
+        await executarComandoIA(comando);
+        setAiResponse("✅ Comando executado!");
+      } else {
+        setAiResponse(respostaIA);
       }
-    } else {
-      setAiResponse(respostaIA);
+      
+      sucesso = true; 
+    } catch (err) {
+      console.warn(`Tentativa com ${modeloNome} falhou:`, err.message);
+      // Se falhar, o loop pula para o próximo modelo e cria um NOVO 'model'
     }
-  } catch (error) {
-    console.error("Erro na IA:", error);
-    setAiResponse("Erro Real: " + error.message);
+  }
+
+  if (!sucesso) {
+    setAiResponse("🚨 Erro: Não consegui conectar com nenhum modelo da IA.");
   }
 };
   const executarComandoIA = async (comando) => {
