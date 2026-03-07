@@ -1723,14 +1723,24 @@ ${appointments.map(a => {
                       <div style={{ width: "60px", fontWeight: "bold", color: primaryColor, fontSize: "14px" }}>{String(hora).padStart(2, "0")}:00</div>
                       <div style={{ flex: 1 }}>
                         {app ? (
-                          <div onClick={() => {setSelHora(hora); setEditAppId(app.id); setSelCliente(app.clientId); setSelServico(app.serviceId); setClientSearch(getNome(clients, app.clientId)); setShowModal(true);}} style={{cursor:"pointer", opacity: isStart ? 1 : 0.6}}>
-                            <strong style={{color: modernTheme.text}}>{getNome(clients, app.clientId)}</strong> {isStart && `- ${getNome(services, app.serviceId)}`}
-                          </div>
-                        ) : (
-                          ehPassado ? 
-                          <span style={{color: modernTheme.textMuted, fontSize: "12px"}}>Indisponível</span> :
-                          <span onClick={() => {setSelHora(hora); setEditAppId(null); setSelCliente(""); setClientSearch(""); setShowModal(true);}} style={{color: modernTheme.success, cursor:"pointer", fontWeight: "bold", fontSize: "12px"}}>+ Disponível</span>
-                        )}
+  <div onClick={() => {setSelHora(hora); setEditAppId(app.id); setSelCliente(app.clientId); setSelServico(app.serviceId); setClientSearch(getNome(clients, app.clientId)); setShowModal(true);}} style={{cursor:"pointer", opacity: isStart ? 1 : 0.6}}>
+    <strong style={{color: modernTheme.text}}>{getNome(clients, app.clientId)}</strong> {isStart && `- ${getNome(services, app.serviceId)}`}
+  </div>
+) : (
+  /* CRIS PODE CLICAR EM TUDO: Se for passado, aparece em cinza, se for futuro, em verde */
+  <span 
+    onClick={() => {setSelHora(hora); setEditAppId(null); setSelCliente(""); setClientSearch(""); setShowModal(true);}} 
+    style={{
+      color: ehPassado ? "#95a5a6" : modernTheme.success, 
+      cursor: "pointer", 
+      fontWeight: "bold", 
+      fontSize: "12px",
+      fontStyle: ehPassado ? "italic" : "normal"
+    }}
+  >
+    {ehPassado ? "+ Lançar Esquecido" : "+ Disponível"}
+  </span>
+)}
                       </div>
                       {isStart && (
                         <div style={{ display: "flex", gap: "3px" }}>
