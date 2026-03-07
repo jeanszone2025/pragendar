@@ -1292,12 +1292,34 @@ ${appointments.map(a => {
   const nomeParaExibir = nomeEmpresa || "Profissional";
   const contexto = {
     usuarioAtual: nomeParaExibir,
-    clientes: clients.map(c => ({ id: c.id, nome: c.nome, telefone: c.telefone })),
-    servicos: services.map(s => ({ id: s.id, nome: s.nome, preco: s.preco, duracao: s.duracao })),
     dataHoje: new Date().toLocaleDateString("pt-BR"),
+    totalClientes: clients.length,
+    clientes: clients.slice(0, 20).map(c => ({ id: c.id, nome: c.nome })), // Enviamos alguns para exemplo
+    servicos: services.map(s => ({ id: s.id, nome: s.nome, preco: s.preco })),
+    // ADICIONADO: A IA agora vê a agenda!
+    agenda: appointments.map(a => ({
+      data: new Date(a.dataHora).toLocaleDateString("pt-BR"),
+      hora: new Date(a.dataHora).getHours() + ":00",
+      cliente: getNome(clients, a.clientId) || a.clientName,
+      servico: getNome(services, a.serviceId),
+      status: a.status
+    })).filter(a => a.data === new Date().toLocaleDateString("pt-BR")) // Filtra só os de hoje para não pesar
   };
 
-  const promptIA = `Você é a Secretária Executiva do Pragendar... PEDIDO: "${pergunta}"`;
+  const promptIA = `
+    Você é a Secretária Executiva do Pragendar. 
+    AVISO: VOCÊ JÁ TEM ACESSO AOS DADOS. NÃO PEÇA PERMISSÃO.
+    
+    DADOS DO SISTEMA: ${JSON.stringify(contexto)}
+
+    SUA MISSÃO:
+    - Se perguntarem "Hoje", use a lista "agenda" acima.
+    - Se perguntarem "Clientes", use o "totalClientes".
+    - Se pedirem para agendar, criar ou deletar, use os formatos JSON que combinamos.
+    - Se a informação não estiver nos dados acima, diga que ainda não foi cadastrada.
+
+    PEDIDO DO USUÁRIO: "${pergunta}"
+  `;
 
   for (const modeloNome of modelosParaTentar) {
     if (sucesso) break; 
