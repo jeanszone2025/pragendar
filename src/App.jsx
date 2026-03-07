@@ -576,6 +576,7 @@ const modernTheme = {
 
 // ========== COMPONENTE PRINCIPAL: APP DA PROFISSIONAL ==========
   const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_KEY || "AI_KEY_TESTE");
+  console.log("CHAVE CARREGADA:", import.meta.env.VITE_GEMINI_KEY ? "SIM ✅" : "NÃO ❌");
 export default function App() {
   // 1. Verificação de Roteamento para Clientes (SaaS)
   const urlParams = new URLSearchParams(window.location.search);
@@ -2036,7 +2037,7 @@ Por favor, processe a imagem agora.`; // SÓ AQUI fecha a crase e o ponto e vír
 
 {/* === ABA CLIENTES === */}
 {tab === "clientes" && (
-      <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>>
+      <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
         <section style={{...cardStyle, boxShadow: modernTheme.shadow}}>
           <h3 style={{color: primaryColor, marginBottom: "15px"}}>{editId ? "✏️ Editar" : "👤 Novo"} Cliente</h3>
           <input placeholder="👤 Nome Completo" value={nomeCliente} onChange={e => setNomeCliente(e.target.value)} style={inputStyle} />
@@ -2103,7 +2104,7 @@ Por favor, processe a imagem agora.`; // SÓ AQUI fecha a crase e o ponto e vír
 </div>
 
   <p style={{fontSize: "10px", color: "#999", textAlign: "center", margin: 0}}>
-    Dica: No celular, vá em Contatos > Configurações > Exportar para gerar o arquivo .vcf
+    Dica: No celular, vá em Contatos &gt; Configurações &gt; Exportar para gerar o arquivo .vcf
   </p>
 </section>
             <input placeholder="🔍 Buscar..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={inputStyle} />
