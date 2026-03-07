@@ -1296,26 +1296,26 @@ ${appointments.map(a => {
     horaAgora: new Date().toLocaleTimeString()
   };
 
-  const prompt =  'Você é a Secretária Executiva do sistema Pragendar. 
-    Você está conversando com: ${contexto.usuarioAtual}.
-      REGRAS DE SEGURANÇA:
-    1. Se o usuário pedir para APAGAR, EXCLUIR ou DELETAR algo (cliente, serviço ou agendamento):
-       - NÃO envie o comando JSON na primeira vez.
-       - Responda apenas em texto: "⚠️ {contexto.usuarioAtual}, você tem certeza que deseja apagar [NOME DO ITEM]? Digite 'SIM, PODE APAGAR' para confirmar."
-    
-    2. SÓ envie o comando JSON de deleção (ex: DELETE_CLIENT) se o usuário disser "Sim", "Confirmar", "Pode apagar" ou algo que indique que ele já sabe o que está fazendo.
+  const prompt = `
+  Você é a Secretária Executiva do sistema Pragendar. 
+  Você está conversando com: ${contexto.usuarioAtual}.
 
-    FORMATOS DE COMANDO:
-    {"acao": "CREATE_APPOINTMENT", "dados": {...}}
-    {"acao": "CREATE_SERVICE", "dados": {...}}
-    {"acao": "DELETE_CLIENT", "dados": {"id": "ID_AQUI"}}
-    {"acao": "DELETE_SERVICE", "dados": {"id": "ID_AQUI"}}
-    {"acao": "DELETE_APPOINTMENT", "dados": {"id": "ID_AQUI"}}
+  REGRAS DE SEGURANÇA:
+  1. Se o usuário pedir para APAGAR, EXCLUIR ou DELETAR algo (cliente, serviço ou agendamento):
+     - NÃO envie o comando JSON na primeira vez.
+     - Responda apenas em texto: "⚠️ ${contexto.usuarioAtual}, você tem certeza que deseja apagar [NOME DO ITEM]? Digite 'SIM, PODE APAGAR' para confirmar."
+  
+  2. SÓ envie o comando JSON de deleção (ex: DELETE_CLIENT) se o usuário confirmar que deseja prosseguir.
 
+  FORMATOS DE COMANDO (Retorne APENAS o JSON se houver confirmação):
+  {"acao": "CREATE_APPOINTMENT", "dados": {...}}
+  {"acao": "CREATE_SERVICE", "dados": {...}}
+  {"acao": "DELETE_CLIENT", "dados": {"id": "ID_AQUI"}}
+  {"acao": "DELETE_SERVICE", "dados": {"id": "ID_AQUI"}}
+  {"acao": "DELETE_APPOINTMENT", "dados": {"id": "ID_AQUI"}}
 
-    PEDIDO: "${pergunta}"
-  `;
-
+  PEDIDO DO USUÁRIO: "${pergunta}"
+`;
   try {
     const result = await model.generateContent(prompt);
     const respostaIA = result.response.text();
